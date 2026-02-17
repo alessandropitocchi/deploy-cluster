@@ -4,71 +4,91 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**deploy-cluster** is a CLI tool for deploying Kubernetes clusters on various providers, starting with kind (Kubernetes in Docker). The tool allows users to define cluster topology (number of workers, control plane nodes) and install plugins for storage, CD, and other cluster components.
+**deploy-cluster** is a CLI tool for deploying Kubernetes clusters on kind (Kubernetes in Docker). It allows users to define cluster topology and install plugins (storage, ingress, ArgoCD) from a single YAML configuration file.
 
-## Planned Architecture
+## Architecture
 
 ### Core Concepts
 
-- **Providers**: Abstraction layer for different cluster providers (kind, k3d, etc.)
-- **Plugins**: Modular components that can be installed on clusters (storage, ArgoCD, etc.)
-- **Cluster Config**: YAML-based configuration for defining cluster topology
+- **Providers**: Abstraction layer for cluster providers. Interface in `pkg/provider/provider.go`. Currently implemented: **kind**.
+- **Plugins**: Modular components installed on clusters. Each plugin has its own package under `pkg/plugin/`. Implemented: **storage** (local-path-provisioner), **ingress** (nginx), **ArgoCD**.
+- **Config**: Single `cluster.yaml` defines cluster topology + all plugins. Parsed and validated in `pkg/config/`.
 
-### Target Features
+### Plugin Installation Order
 
-1. **Cluster Creation**: Deploy clusters with configurable:
-   - Number of worker nodes
-   - Number of control plane nodes
-   - Kubernetes version
-   - Network configuration
+`create` and `upgrade` install plugins in this order: **storage → ingress → ArgoCD**. Storage first so PVCs are available; ingress before ArgoCD so Ingress resources work immediately.
 
-2. **Plugin System**: Post-deployment installation of components with their configuration:
-   - **ArgoCD**: Install and configure with target Git repository, project settings, and Application definitions
-   - **Storage**: local-path-provisioner, OpenEBS, etc.
-   - **Ingress**: nginx, traefik
-   - **Monitoring**: Prometheus, Grafana stack
+## Commands
 
-3. **Plugin Configuration Example** (ArgoCD):
-   ```yaml
-   plugins:
-     argocd:
-       enabled: true
-       repo: https://github.com/user/gitops-repo.git
-       path: environments/dev
-       targetRevision: main
-       project: default
-   ```
-
-4. **Provider Abstraction**: Support multiple local Kubernetes providers:
-   - kind (initial target)
-   - k3d (future)
-   - minikube (future)
+| Command | Description |
+|---------|-------------|
+| `init` | Generate starter `cluster.yaml` |
+| `create` | Create cluster + install all enabled plugins |
+| `upgrade` | Update plugins on existing cluster (diff-based for ArgoCD repos/apps) |
+| `upgrade --dry-run` | Preview changes without applying |
+| `status` | Show cluster and plugin status |
+| `destroy` | Delete cluster |
+| `get clusters` | List kind clusters |
+| `get nodes <name>` | List cluster nodes |
+| `get kubeconfig <name>` | Print kubeconfig |
 
 ## Development
 
 ### Tech Stack
 - **Language**: Go
 - **CLI Framework**: cobra
-- **Kubernetes Client**: client-go, kind API
-- **Config Format**: YAML (parsed with gopkg.in/yaml.v3)
+- **Config Format**: YAML (gopkg.in/yaml.v3)
+- **Cluster Interaction**: kubectl commands via `os/exec`
 
-### Build & Run
+### Build & Test
 ```bash
-go build -o deploy-cluster ./cmd/deploy-cluster
-./deploy-cluster create --config cluster.yaml
+go build -o deploy-cluster ./cmd/deploycluster
+go test ./...
 ```
 
-### Project Structure (planned)
+### Project Structure
 ```
-cmd/deploy-cluster/     # CLI entrypoint
+cmd/deploycluster/          # CLI entrypoint and cobra commands
+  main.go                   # Entry point
+  root.go                   # Root command
+  helpers.go                # Shared getProvider() helper
+  create.go                 # create command
+  upgrade.go                # upgrade command (with --dry-run)
+  destroy.go                # destroy command
+  status.go                 # status command
+  init.go                   # init command
+  get.go                    # get subcommands
 pkg/
-  provider/             # Provider interface and implementations (kind, k3d)
-  plugin/               # Plugin interface and implementations (argocd, storage)
-  config/               # YAML config parsing and validation
-  cluster/              # Cluster lifecycle management
+  config/
+    config.go               # Config structs, Load(), Save(), Validate()
+    env.go                  # .env file loading
+  provider/
+    provider.go             # Provider interface (Name, Create, Delete, Exists, KubeContext, GetKubeconfig)
+    kind/
+      kind.go               # kind provider implementation
+  plugin/
+    argocd/
+      argocd.go             # ArgoCD plugin (Install, Upgrade, DryRun, repos/apps diff)
+    storage/
+      storage.go            # Storage plugin (local-path-provisioner)
+    ingress/
+      ingress.go            # Ingress plugin (nginx)
 ```
 
 ### Key Design Decisions
-- Primary provider target: kind
-- Plugin installation should be idempotent
-- Plugins receive cluster kubeconfig for kubectl/client-go operations
+- Provider abstraction: `KubeContext()` method avoids hardcoding `kind-<name>` everywhere
+- ArgoCD `Upgrade()` is diff-based: applies all desired repos/apps (idempotent), removes those no longer in config
+- Repo name generation is centralized in `repoName()` — used by both `addRepository` and `Upgrade` diff logic
+- Config `Validate()` runs inside `Load()` — invalid configs fail early
+- No generic Plugin interface — each plugin has typed config (ArgoCD receives `*ArgoCDConfig`, etc.)
+- Plugin installation is idempotent (`kubectl apply`)
+
+### Testing
+Tests are colocated with source files (`*_test.go` in same package). Run with `go test ./...`.
+
+Key test areas:
+- `pkg/config/`: Load/Save round-trip, validation (all error cases), env file parsing
+- `pkg/plugin/argocd/`: repoName generation, diff logic (add/remove repos/apps)
+- `pkg/plugin/storage/`: type routing, error messages
+- `pkg/plugin/ingress/`: type routing, error messages
+- `pkg/provider/kind/`: generateKindConfig, KubeContext

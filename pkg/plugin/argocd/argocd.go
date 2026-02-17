@@ -446,6 +446,94 @@ func (p *Plugin) Upgrade(cfg *config.ArgoCDConfig, kubecontext string) error {
 	return nil
 }
 
+// DryRun shows what would change without applying anything.
+func (p *Plugin) DryRun(cfg *config.ArgoCDConfig, kubecontext string) error {
+	namespace := cfg.Namespace
+	if namespace == "" {
+		namespace = "argocd"
+	}
+
+	version := cfg.Version
+	if version == "" {
+		version = "stable"
+	}
+
+	fmt.Printf("[argocd] Dry-run: version %s, namespace %s\n", version, namespace)
+
+	// --- Repos diff ---
+	desiredRepos := make(map[string]bool)
+	for _, repo := range cfg.Repos {
+		desiredRepos[p.repoName(repo)] = true
+	}
+
+	currentRepos, err := p.ListCurrentRepos(kubecontext, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to list current repos: %w", err)
+	}
+	currentRepoSet := make(map[string]bool)
+	for _, name := range currentRepos {
+		currentRepoSet[name] = true
+	}
+
+	fmt.Println("\n  Repositories:")
+	changes := false
+	for _, repo := range cfg.Repos {
+		name := p.repoName(repo)
+		if currentRepoSet[name] {
+			fmt.Printf("    ~ %s (update)\n", name)
+		} else {
+			fmt.Printf("    + %s (add)\n", name)
+		}
+		changes = true
+	}
+	for _, name := range currentRepos {
+		if !desiredRepos[name] {
+			fmt.Printf("    - %s (remove)\n", name)
+			changes = true
+		}
+	}
+	if !changes {
+		fmt.Println("    (no changes)")
+	}
+
+	// --- Apps diff ---
+	desiredApps := make(map[string]bool)
+	for _, app := range cfg.Apps {
+		desiredApps[app.Name] = true
+	}
+
+	currentApps, err := p.ListCurrentApps(kubecontext, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to list current apps: %w", err)
+	}
+	currentAppSet := make(map[string]bool)
+	for _, name := range currentApps {
+		currentAppSet[name] = true
+	}
+
+	fmt.Println("\n  Applications:")
+	changes = false
+	for _, app := range cfg.Apps {
+		if currentAppSet[app.Name] {
+			fmt.Printf("    ~ %s (update)\n", app.Name)
+		} else {
+			fmt.Printf("    + %s (add)\n", app.Name)
+		}
+		changes = true
+	}
+	for _, name := range currentApps {
+		if !desiredApps[name] {
+			fmt.Printf("    - %s (remove)\n", name)
+			changes = true
+		}
+	}
+	if !changes {
+		fmt.Println("    (no changes)")
+	}
+
+	return nil
+}
+
 // repoName returns the secret name for a repo config (without the "repo-" prefix).
 func (p *Plugin) repoName(repo config.ArgoCDRepoConfig) string {
 	name := repo.Name

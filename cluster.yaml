@@ -9,6 +9,9 @@ plugins:
     storage:
         enabled: true
         type: local-path
+    ingress:
+        enabled: true
+        type: nginx
     argocd:
         enabled: true
         namespace: argocd

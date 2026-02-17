@@ -13,6 +13,7 @@ import (
 var (
 	upgradeConfigFile string
 	upgradeEnvFile    string
+	upgradeDryRun     bool
 )
 
 var upgradeCmd = &cobra.Command{
@@ -20,7 +21,9 @@ var upgradeCmd = &cobra.Command{
 	Short: "Upgrade an existing cluster applying configuration changes",
 	Long: `Upgrade an existing Kubernetes cluster by applying only the differences
 compared to the current state. The cluster is not recreated, but plugins
-(ArgoCD repos/apps) are updated: additions, modifications and removals.`,
+(ArgoCD repos/apps) are updated: additions, modifications and removals.
+
+Use --dry-run to preview changes without applying them.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Load .env file
 		if err := config.LoadEnvFile(upgradeEnvFile); err != nil {
@@ -48,10 +51,13 @@ compared to the current state. The cluster is not recreated, but plugins
 			return fmt.Errorf("cluster '%s' does not exist. Use 'create' to create it first", cfg.Name)
 		}
 
-		fmt.Printf("Upgrading cluster '%s'...\n\n", cfg.Name)
-
-		// Determine kubecontext based on provider
 		kubecontext := provider.KubeContext(cfg.Name)
+
+		if upgradeDryRun {
+			return runUpgradeDryRun(cfg, kubecontext)
+		}
+
+		fmt.Printf("Upgrading cluster '%s'...\n\n", cfg.Name)
 
 		// Upgrade storage plugin
 		if cfg.Plugins.Storage != nil && cfg.Plugins.Storage.Enabled {
@@ -108,13 +114,11 @@ compared to the current state. The cluster is not recreated, but plugins
 			}
 
 			if !installed {
-				// Not installed yet, do a full install
 				fmt.Println("[argocd] ArgoCD not installed, performing full installation...")
 				if err := argoPlugin.Install(cfg.Plugins.ArgoCD, kubecontext); err != nil {
 					return fmt.Errorf("failed to install ArgoCD: %w", err)
 				}
 			} else {
-				// Already installed, perform upgrade (diff-based)
 				if err := argoPlugin.Upgrade(cfg.Plugins.ArgoCD, kubecontext); err != nil {
 					return fmt.Errorf("failed to upgrade ArgoCD: %w", err)
 				}
@@ -136,8 +140,70 @@ compared to the current state. The cluster is not recreated, but plugins
 	},
 }
 
+func runUpgradeDryRun(cfg *config.Config, kubecontext string) error {
+	fmt.Printf("Dry-run for cluster '%s':\n", cfg.Name)
+
+	// Storage
+	if cfg.Plugins.Storage != nil && cfg.Plugins.Storage.Enabled {
+		storagePlugin := storage.New()
+		storagePlugin.Verbose = false
+		installed, err := storagePlugin.IsInstalled(kubecontext)
+		if err != nil {
+			return fmt.Errorf("failed to check storage status: %w", err)
+		}
+		if installed {
+			fmt.Printf("\n[storage] %s: installed (re-apply)\n", cfg.Plugins.Storage.Type)
+		} else {
+			fmt.Printf("\n[storage] %s: not installed (will install)\n", cfg.Plugins.Storage.Type)
+		}
+	}
+
+	// Ingress
+	if cfg.Plugins.Ingress != nil && cfg.Plugins.Ingress.Enabled {
+		ingressPlugin := ingress.New()
+		ingressPlugin.Verbose = false
+		installed, err := ingressPlugin.IsInstalled(kubecontext)
+		if err != nil {
+			return fmt.Errorf("failed to check ingress status: %w", err)
+		}
+		if installed {
+			fmt.Printf("\n[ingress] %s: installed (re-apply)\n", cfg.Plugins.Ingress.Type)
+		} else {
+			fmt.Printf("\n[ingress] %s: not installed (will install)\n", cfg.Plugins.Ingress.Type)
+		}
+	}
+
+	// ArgoCD
+	if cfg.Plugins.ArgoCD != nil && cfg.Plugins.ArgoCD.Enabled {
+		argoPlugin := argocd.New()
+		argoPlugin.Verbose = false
+
+		namespace := cfg.Plugins.ArgoCD.Namespace
+		if namespace == "" {
+			namespace = "argocd"
+		}
+
+		installed, err := argoPlugin.IsInstalled(kubecontext, namespace)
+		if err != nil {
+			return fmt.Errorf("failed to check ArgoCD status: %w", err)
+		}
+
+		if !installed {
+			fmt.Printf("\n[argocd] Not installed (will perform full install)\n")
+		} else {
+			if err := argoPlugin.DryRun(cfg.Plugins.ArgoCD, kubecontext); err != nil {
+				return fmt.Errorf("failed to dry-run ArgoCD: %w", err)
+			}
+		}
+	}
+
+	fmt.Println("\nNo changes applied (dry-run).")
+	return nil
+}
+
 func init() {
 	upgradeCmd.Flags().StringVarP(&upgradeConfigFile, "config", "c", "cluster.yaml", "cluster configuration file")
 	upgradeCmd.Flags().StringVarP(&upgradeEnvFile, "env", "e", ".env", "environment file for secrets")
+	upgradeCmd.Flags().BoolVar(&upgradeDryRun, "dry-run", false, "preview changes without applying them")
 	rootCmd.AddCommand(upgradeCmd)
 }
