@@ -97,6 +97,13 @@ func (p *Plugin) Install(cfg *config.ArgoCDConfig, kubecontext string) error {
 	}
 	p.log("[argocd] ✓ ArgoCD server is ready\n")
 
+	// Configure ingress if enabled
+	if cfg.Ingress != nil && cfg.Ingress.Enabled {
+		if err := p.configureIngress(cfg.Ingress, kubecontext, namespace); err != nil {
+			return fmt.Errorf("failed to configure ArgoCD ingress: %w", err)
+		}
+	}
+
 	// Add repositories
 	if len(cfg.Repos) > 0 {
 		p.log("[argocd] Adding repositories...\n")
@@ -121,9 +128,13 @@ func (p *Plugin) Install(cfg *config.ArgoCDConfig, kubecontext string) error {
 
 	// Print access info
 	p.log("\n[argocd] ✓ ArgoCD installed successfully!\n")
-	p.log("\n[argocd] To access ArgoCD UI:\n")
-	p.log("  kubectl port-forward svc/argocd-server -n %s 8080:443\n", namespace)
-	p.log("  Open: https://localhost:8080\n")
+	if cfg.Ingress != nil && cfg.Ingress.Enabled {
+		p.log("\n[argocd] ArgoCD UI available at: http://%s\n", cfg.Ingress.Host)
+	} else {
+		p.log("\n[argocd] To access ArgoCD UI:\n")
+		p.log("  kubectl port-forward svc/argocd-server -n %s 8080:443\n", namespace)
+		p.log("  Open: https://localhost:8080\n")
+	}
 	p.log("\n[argocd] Get admin password:\n")
 	p.log("  kubectl -n %s get secret argocd-initial-admin-secret -o jsonpath=\"{.data.password}\" | base64 -d\n", namespace)
 
@@ -373,6 +384,13 @@ func (p *Plugin) Upgrade(cfg *config.ArgoCDConfig, kubecontext string) error {
 	}
 	p.log("[argocd] ✓ ArgoCD server is ready\n")
 
+	// Configure ingress if enabled
+	if cfg.Ingress != nil && cfg.Ingress.Enabled {
+		if err := p.configureIngress(cfg.Ingress, kubecontext, namespace); err != nil {
+			return fmt.Errorf("failed to configure ArgoCD ingress: %w", err)
+		}
+	}
+
 	// --- Repos diff ---
 	desiredRepos := make(map[string]config.ArgoCDRepoConfig)
 	for _, repo := range cfg.Repos {
@@ -606,6 +624,91 @@ func (p *Plugin) deleteRepo(name, kubecontext, namespace string) error {
 // deleteApp deletes an ArgoCD Application by name.
 func (p *Plugin) deleteApp(name, kubecontext, namespace string) error {
 	return p.runKubectl(kubecontext, "delete", "application.argoproj.io", name, "-n", namespace)
+}
+
+func (p *Plugin) configureIngress(cfg *config.ArgoCDIngressConfig, kubecontext string, namespace string) error {
+	p.log("[argocd] Configuring ingress for ArgoCD UI...\n")
+
+	// Set server.insecure=true in argocd-cmd-params-cm ConfigMap
+	// This disables internal TLS so the ingress controller can proxy HTTP to the backend
+	p.log("[argocd] Configuring argocd-server to disable internal TLS...\n")
+	cmManifest := fmt.Sprintf(`apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: %s
+data:
+  server.insecure: "true"`, namespace)
+
+	cmd := exec.Command("kubectl", "--context", kubecontext, "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(cmManifest)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to configure argocd-cmd-params-cm: %w", err)
+	}
+
+	// Restart argocd-server to pick up the ConfigMap change
+	p.log("[argocd] Restarting argocd-server...\n")
+	if err := p.runKubectl(kubecontext, "rollout", "restart", "deployment/argocd-server", "-n", namespace); err != nil {
+		return fmt.Errorf("failed to restart argocd-server: %w", err)
+	}
+
+	if err := p.waitForDeployment(kubecontext, namespace, "argocd-server", 3*time.Minute); err != nil {
+		return fmt.Errorf("argocd-server not ready after restart: %w", err)
+	}
+
+	// Build Ingress manifest
+	tlsSection := ""
+	annotations := `    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"`
+	if cfg.TLS {
+		annotations = `    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"`
+		tlsSection = fmt.Sprintf(`  tls:
+    - hosts:
+        - %s
+      secretName: argocd-tls`, cfg.Host)
+	}
+
+	manifest := fmt.Sprintf(`apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server-ingress
+  namespace: %s
+  annotations:
+%s
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: %s
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80
+%s`, namespace, annotations, cfg.Host, tlsSection)
+
+	p.log("[argocd] Applying Ingress resource for host '%s'...\n", cfg.Host)
+	ingressCmd := exec.Command("kubectl", "--context", kubecontext, "apply", "-f", "-")
+	ingressCmd.Stdin = strings.NewReader(manifest)
+	ingressCmd.Stdout = os.Stdout
+	ingressCmd.Stderr = os.Stderr
+	if err := ingressCmd.Run(); err != nil {
+		return fmt.Errorf("failed to apply ingress: %w", err)
+	}
+
+	p.log("[argocd] ✓ Ingress configured: http://%s\n", cfg.Host)
+	if cfg.TLS {
+		p.log("[argocd]   HTTPS: https://%s (TLS via cert-manager)\n", cfg.Host)
+	}
+
+	return nil
 }
 
 func (p *Plugin) Uninstall(kubecontext string, namespace string) error {

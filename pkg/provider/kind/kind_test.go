@@ -157,6 +157,69 @@ func TestGenerateKindConfig_NodeOrder(t *testing.T) {
 	}
 }
 
+func TestGenerateKindConfig_WithIngress(t *testing.T) {
+	p := New()
+	cfg := &config.Config{
+		Name: "ingress-test",
+		Cluster: config.ClusterConfig{
+			ControlPlanes: 1,
+			Workers:       1,
+		},
+		Plugins: config.PluginsConfig{
+			Ingress: &config.IngressConfig{
+				Enabled: true,
+				Type:    "nginx",
+			},
+		},
+	}
+
+	kindCfg := p.generateKindConfig(cfg)
+
+	cp := kindCfg.Nodes[0]
+	if len(cp.KubeadmConfigPatches) != 1 {
+		t.Fatalf("KubeadmConfigPatches count = %d, want 1", len(cp.KubeadmConfigPatches))
+	}
+	if len(cp.ExtraPortMappings) != 2 {
+		t.Fatalf("ExtraPortMappings count = %d, want 2", len(cp.ExtraPortMappings))
+	}
+	if cp.ExtraPortMappings[0].ContainerPort != 80 || cp.ExtraPortMappings[0].HostPort != 80 {
+		t.Errorf("PortMapping[0] = %+v, want 80:80", cp.ExtraPortMappings[0])
+	}
+	if cp.ExtraPortMappings[1].ContainerPort != 443 || cp.ExtraPortMappings[1].HostPort != 443 {
+		t.Errorf("PortMapping[1] = %+v, want 443:443", cp.ExtraPortMappings[1])
+	}
+
+	// Worker should NOT have ingress config
+	worker := kindCfg.Nodes[1]
+	if len(worker.KubeadmConfigPatches) != 0 {
+		t.Errorf("Worker should not have KubeadmConfigPatches")
+	}
+	if len(worker.ExtraPortMappings) != 0 {
+		t.Errorf("Worker should not have ExtraPortMappings")
+	}
+}
+
+func TestGenerateKindConfig_WithoutIngress(t *testing.T) {
+	p := New()
+	cfg := &config.Config{
+		Name: "no-ingress",
+		Cluster: config.ClusterConfig{
+			ControlPlanes: 1,
+			Workers:       1,
+		},
+	}
+
+	kindCfg := p.generateKindConfig(cfg)
+
+	cp := kindCfg.Nodes[0]
+	if len(cp.KubeadmConfigPatches) != 0 {
+		t.Errorf("Should not have KubeadmConfigPatches without ingress")
+	}
+	if len(cp.ExtraPortMappings) != 0 {
+		t.Errorf("Should not have ExtraPortMappings without ingress")
+	}
+}
+
 func TestKubeContext(t *testing.T) {
 	p := New()
 	got := p.KubeContext("my-cluster")

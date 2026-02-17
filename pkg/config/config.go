@@ -44,8 +44,15 @@ type ArgoCDConfig struct {
 	Enabled   bool               `yaml:"enabled"`
 	Namespace string             `yaml:"namespace,omitempty"` // ArgoCD installation namespace
 	Version   string             `yaml:"version,omitempty"`   // ArgoCD version
+	Ingress   *ArgoCDIngressConfig `yaml:"ingress,omitempty"` // Ingress for ArgoCD UI
 	Repos     []ArgoCDRepoConfig `yaml:"repos,omitempty"`     // Repositories to add
 	Apps      []ArgoCDAppConfig  `yaml:"apps,omitempty"`      // Applications to create
+}
+
+type ArgoCDIngressConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Host    string `yaml:"host"`              // Hostname (e.g. argocd.localhost)
+	TLS     bool   `yaml:"tls,omitempty"`     // Enable TLS (requires cert-manager)
 }
 
 type ArgoCDAppConfig struct {
@@ -89,7 +96,8 @@ type CertManagerConfig struct {
 
 type MonitoringConfig struct {
 	Enabled bool   `yaml:"enabled"`
-	Type    string `yaml:"type"` // prometheus
+	Type    string `yaml:"type"`              // prometheus
+	Version string `yaml:"version,omitempty"` // chart version (default: 72.6.2)
 }
 
 // DefaultConfig returns a starter configuration
@@ -235,6 +243,11 @@ func (c *Config) Validate() error {
 	}
 
 	if argo := c.Plugins.ArgoCD; argo != nil && argo.Enabled {
+		if ing := argo.Ingress; ing != nil && ing.Enabled {
+			if ing.Host == "" {
+				errs = append(errs, "plugins.argocd.ingress.host is required when ingress is enabled")
+			}
+		}
 		for i, repo := range argo.Repos {
 			if repo.URL == "" {
 				errs = append(errs, fmt.Sprintf("plugins.argocd.repos[%d]: url is required", i))

@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/alepito/deploy-cluster/pkg/config"
 )
 
 const (
-	// kube-prometheus-stack setup/teardown manifests
-	kubePrometheusVersion = "v0.14.0"
-	kubePrometheusBaseURL = "https://raw.githubusercontent.com/prometheus-operator/kube-prometheus/" + kubePrometheusVersion + "/manifests"
+	defaultChartRef     = "oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack"
+	defaultChartVersion = "72.6.2"
+	releaseName         = "kube-prometheus-stack"
+	namespace           = "monitoring"
 )
 
 type Plugin struct {
@@ -37,7 +37,7 @@ func (p *Plugin) log(format string, args ...any) {
 func (p *Plugin) Install(cfg *config.MonitoringConfig, kubecontext string) error {
 	switch cfg.Type {
 	case "prometheus":
-		return p.installPrometheus(kubecontext)
+		return p.installPrometheus(cfg, kubecontext)
 	default:
 		return fmt.Errorf("unsupported monitoring type: %s (supported: prometheus)", cfg.Type)
 	}
@@ -53,71 +53,48 @@ func (p *Plugin) Uninstall(cfg *config.MonitoringConfig, kubecontext string) err
 }
 
 func (p *Plugin) IsInstalled(kubecontext string) (bool, error) {
-	cmd := exec.Command("kubectl", "--context", kubecontext,
-		"get", "deployment", "prometheus-operator", "-n", "monitoring")
+	cmd := exec.Command("helm", "status", releaseName,
+		"--namespace", namespace, "--kube-context", kubecontext)
 	if err := cmd.Run(); err != nil {
 		return false, nil
 	}
 	return true, nil
 }
 
-func (p *Plugin) installPrometheus(kubecontext string) error {
-	p.log("[monitoring] Installing kube-prometheus-stack %s...\n", kubePrometheusVersion)
+func (p *Plugin) chartVersion(cfg *config.MonitoringConfig) string {
+	if cfg.Version != "" {
+		return cfg.Version
+	}
+	return defaultChartVersion
+}
 
-	// Step 1: Apply CRDs and namespace setup first
-	p.log("[monitoring] Applying setup manifests (CRDs, namespace)...\n")
-	setupURL := kubePrometheusBaseURL + "/setup"
-	cmd := exec.Command("kubectl", "--context", kubecontext,
-		"apply", "--server-side", "-f", setupURL)
+func (p *Plugin) installPrometheus(cfg *config.MonitoringConfig, kubecontext string) error {
+	version := p.chartVersion(cfg)
+	p.log("[monitoring] Installing kube-prometheus-stack %s via Helm...\n", version)
+
+	args := []string{
+		"upgrade", "--install", releaseName, defaultChartRef,
+		"--version", version,
+		"--namespace", namespace,
+		"--create-namespace",
+		"--kube-context", kubecontext,
+		"--wait",
+		"--timeout", (5 * time.Minute).String(),
+	}
+
+	cmd := exec.Command("helm", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to apply setup manifests: %w", err)
-	}
-
-	// Step 2: Wait for CRDs to be established
-	p.log("[monitoring] Waiting for CRDs to be established...\n")
-	crdCmd := exec.Command("kubectl", "--context", kubecontext,
-		"wait", "--for", "condition=Established",
-		"--all", "CustomResourceDefinition",
-		"--namespace=monitoring", "--timeout=60s")
-	crdCmd.Stdout = os.Stdout
-	crdCmd.Stderr = os.Stderr
-	if err := crdCmd.Run(); err != nil {
-		// Non-fatal: CRDs might already be established
-		p.log("[monitoring] Warning: CRD wait returned: %v (continuing)\n", err)
-	}
-
-	// Step 3: Apply main manifests
-	p.log("[monitoring] Applying main manifests...\n")
-	mainCmd := exec.Command("kubectl", "--context", kubecontext,
-		"apply", "-f", kubePrometheusBaseURL)
-	mainCmd.Stdout = os.Stdout
-	mainCmd.Stderr = os.Stderr
-	if err := mainCmd.Run(); err != nil {
-		return fmt.Errorf("failed to apply monitoring manifests: %w", err)
-	}
-
-	// Step 4: Wait for key deployments
-	deployments := []string{"prometheus-operator", "grafana", "kube-state-metrics"}
-	for _, dep := range deployments {
-		p.log("[monitoring] Waiting for %s to be ready...\n", dep)
-		waitCmd := exec.Command("kubectl", "--context", kubecontext,
-			"rollout", "status", "deployment/"+dep,
-			"-n", "monitoring", "--timeout", (3 * time.Minute).String())
-		waitCmd.Stdout = os.Stdout
-		waitCmd.Stderr = os.Stderr
-		if err := waitCmd.Run(); err != nil {
-			p.log("[monitoring] Warning: %s not ready: %v\n", dep, err)
-		}
+		return fmt.Errorf("failed to install kube-prometheus-stack: %w", err)
 	}
 
 	p.log("[monitoring] ✓ kube-prometheus-stack installed successfully\n")
 	p.log("\n[monitoring] To access Grafana:\n")
-	p.log("  kubectl port-forward svc/grafana -n monitoring 3000:3000\n")
-	p.log("  Open: http://localhost:3000 (admin/admin)\n")
+	p.log("  kubectl port-forward svc/kube-prometheus-stack-grafana -n %s 3000:80\n", namespace)
+	p.log("  Open: http://localhost:3000 (admin/prom-operator)\n")
 	p.log("\n[monitoring] To access Prometheus:\n")
-	p.log("  kubectl port-forward svc/prometheus-k8s -n monitoring 9090:9090\n")
+	p.log("  kubectl port-forward svc/kube-prometheus-stack-prometheus -n %s 9090:9090\n", namespace)
 	p.log("  Open: http://localhost:9090\n")
 	return nil
 }
@@ -125,25 +102,35 @@ func (p *Plugin) installPrometheus(kubecontext string) error {
 func (p *Plugin) uninstallPrometheus(kubecontext string) error {
 	p.log("[monitoring] Uninstalling kube-prometheus-stack...\n")
 
-	// Delete main manifests first, then setup (reverse order)
-	mainCmd := exec.Command("kubectl", "--context", kubecontext,
-		"delete", "--ignore-not-found=true", "-f", kubePrometheusBaseURL)
-	mainCmd.Stdout = os.Stdout
-	mainCmd.Stderr = os.Stderr
-	if err := mainCmd.Run(); err != nil {
-		if !strings.Contains(err.Error(), "not found") {
-			return fmt.Errorf("failed to delete monitoring manifests: %w", err)
-		}
+	cmd := exec.Command("helm", "uninstall", releaseName,
+		"--namespace", namespace,
+		"--kube-context", kubecontext)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to uninstall kube-prometheus-stack: %w", err)
 	}
 
-	setupCmd := exec.Command("kubectl", "--context", kubecontext,
-		"delete", "--ignore-not-found=true", "-f", kubePrometheusBaseURL+"/setup")
-	setupCmd.Stdout = os.Stdout
-	setupCmd.Stderr = os.Stderr
-	if err := setupCmd.Run(); err != nil {
-		if !strings.Contains(err.Error(), "not found") {
-			return fmt.Errorf("failed to delete setup manifests: %w", err)
-		}
+	// Clean up CRDs (helm doesn't remove CRDs by default)
+	p.log("[monitoring] Cleaning up Prometheus CRDs...\n")
+	crds := []string{
+		"alertmanagerconfigs.monitoring.coreos.com",
+		"alertmanagers.monitoring.coreos.com",
+		"podmonitors.monitoring.coreos.com",
+		"probes.monitoring.coreos.com",
+		"prometheusagents.monitoring.coreos.com",
+		"prometheuses.monitoring.coreos.com",
+		"prometheusrules.monitoring.coreos.com",
+		"scrapeconfigs.monitoring.coreos.com",
+		"servicemonitors.monitoring.coreos.com",
+		"thanosrulers.monitoring.coreos.com",
+	}
+	for _, crd := range crds {
+		crdCmd := exec.Command("kubectl", "--context", kubecontext,
+			"delete", "crd", crd, "--ignore-not-found=true")
+		crdCmd.Stdout = os.Stdout
+		crdCmd.Stderr = os.Stderr
+		_ = crdCmd.Run()
 	}
 
 	p.log("[monitoring] ✓ kube-prometheus-stack uninstalled\n")

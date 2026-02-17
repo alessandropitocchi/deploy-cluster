@@ -22,6 +22,9 @@ plugins:
         enabled: true
         namespace: argocd
         version: stable
+        ingress:
+            enabled: true
+            host: argocd.localhost
         repos:
             - name: app-repo
               url: git@git.elmec.com:PITOCCHI/test-argo.git

@@ -20,8 +20,17 @@ type KindConfig struct {
 }
 
 type KindNode struct {
-	Role  string `yaml:"role"`
-	Image string `yaml:"image,omitempty"`
+	Role                 string              `yaml:"role"`
+	Image                string              `yaml:"image,omitempty"`
+	KubeadmConfigPatches []string            `yaml:"kubeadmConfigPatches,omitempty"`
+	ExtraPortMappings    []KindPortMapping   `yaml:"extraPortMappings,omitempty"`
+	Labels               map[string]string   `yaml:"labels,omitempty"`
+}
+
+type KindPortMapping struct {
+	ContainerPort int    `yaml:"containerPort"`
+	HostPort      int    `yaml:"hostPort"`
+	Protocol      string `yaml:"protocol,omitempty"`
 }
 
 // Provider implements the Provider interface for kind
@@ -146,11 +155,28 @@ func (p *Provider) generateKindConfig(cfg *config.Config) *KindConfig {
 		image = fmt.Sprintf("kindest/node:%s", cfg.Cluster.Version)
 	}
 
+	// Check if ingress is enabled
+	ingressEnabled := cfg.Plugins.Ingress != nil && cfg.Plugins.Ingress.Enabled
+
 	// Add control plane nodes
 	for i := 0; i < cfg.Cluster.ControlPlanes; i++ {
 		node := KindNode{Role: "control-plane"}
 		if image != "" {
 			node.Image = image
+		}
+		// First control-plane gets ingress config (label + port mappings)
+		if i == 0 && ingressEnabled {
+			node.KubeadmConfigPatches = []string{
+				`kind: InitConfiguration
+nodeRegistration:
+  kubeletExtraArgs:
+    node-labels: "ingress-ready=true"
+`,
+			}
+			node.ExtraPortMappings = []KindPortMapping{
+				{ContainerPort: 80, HostPort: 80, Protocol: "TCP"},
+				{ContainerPort: 443, HostPort: 443, Protocol: "TCP"},
+			}
 		}
 		kindCfg.Nodes = append(kindCfg.Nodes, node)
 	}

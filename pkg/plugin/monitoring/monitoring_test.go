@@ -49,6 +49,22 @@ func TestUninstall_UnsupportedType(t *testing.T) {
 	}
 }
 
+func TestChartVersion_Default(t *testing.T) {
+	p := New()
+	cfg := &config.MonitoringConfig{Enabled: true, Type: "prometheus"}
+	if got := p.chartVersion(cfg); got != defaultChartVersion {
+		t.Errorf("chartVersion() = %q, want %q", got, defaultChartVersion)
+	}
+}
+
+func TestChartVersion_Custom(t *testing.T) {
+	p := New()
+	cfg := &config.MonitoringConfig{Enabled: true, Type: "prometheus", Version: "70.0.0"}
+	if got := p.chartVersion(cfg); got != "70.0.0" {
+		t.Errorf("chartVersion() = %q, want %q", got, "70.0.0")
+	}
+}
+
 func TestLog_Silent(t *testing.T) {
 	p := New()
 	p.Verbose = false
