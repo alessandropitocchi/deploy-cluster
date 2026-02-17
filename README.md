@@ -14,7 +14,7 @@ Permette di creare cluster con topologia configurabile (numero di worker e contr
 ## Installazione
 
 ```bash
-go build -o deploy-cluster ./cmd/deploy-cluster
+go build -o deploy-cluster ./cmd/deploycluster
 ```
 
 ## Quick Start
@@ -28,8 +28,12 @@ go build -o deploy-cluster ./cmd/deploy-cluster
 ./deploy-cluster create --config cluster.yaml
 
 # Verifica lo stato
+./deploy-cluster status --config cluster.yaml
 ./deploy-cluster get clusters
 ./deploy-cluster get nodes my-cluster
+
+# Aggiorna i plugin senza ricreare il cluster
+./deploy-cluster upgrade --config cluster.yaml
 
 # Distruggi il cluster
 ./deploy-cluster destroy --config cluster.yaml
@@ -41,6 +45,8 @@ go build -o deploy-cluster ./cmd/deploy-cluster
 |---------|-------------|
 | `init` | Genera un file `cluster.yaml` di partenza |
 | `create` | Crea il cluster e installa i plugin configurati |
+| `upgrade` | Aggiorna i plugin di un cluster esistente (diff-based) |
+| `status` | Mostra lo stato del cluster e dei plugin installati |
 | `destroy` | Distrugge il cluster |
 | `get clusters` | Lista tutti i cluster esistenti |
 | `get nodes <nome>` | Lista i nodi di un cluster |
@@ -50,8 +56,8 @@ go build -o deploy-cluster ./cmd/deploy-cluster
 
 | Flag | Comando | Default | Descrizione |
 |------|---------|---------|-------------|
-| `-c, --config` | create, destroy | `cluster.yaml` | File di configurazione |
-| `-e, --env` | create | `.env` | File con variabili d'ambiente per i secret |
+| `-c, --config` | create, upgrade, status, destroy | `cluster.yaml` | File di configurazione |
+| `-e, --env` | create, upgrade | `.env` | File con variabili d'ambiente per i secret |
 | `-o, --output` | init | `cluster.yaml` | Path del file di output |
 | `-n, --name` | destroy | - | Nome del cluster (override del config) |
 
@@ -70,6 +76,9 @@ cluster:
   workers: 2
   version: v1.31.0
 plugins:
+  storage:
+    enabled: true
+    type: local-path
   argocd:
     enabled: true
     namespace: argocd
@@ -100,6 +109,39 @@ plugins:
 | `cluster.controlPlanes` | int | `1` | Numero di control plane |
 | `cluster.workers` | int | `2` | Numero di worker |
 | `cluster.version` | string | `v1.31.0` | Versione Kubernetes |
+
+### Plugin Storage
+
+Installa un provisioner per StorageClass nel cluster. Viene installato prima degli altri plugin, in modo che eventuali PVC richiesti da ArgoCD o altre app siano già disponibili.
+
+| Campo | Tipo | Default | Descrizione |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Abilita l'installazione dello storage |
+| `type` | string | **obbligatorio** | Tipo di provisioner: `local-path` |
+
+#### Tipi supportati
+
+| Tipo | Descrizione |
+|------|-------------|
+| `local-path` | [Rancher local-path-provisioner](https://github.com/rancher/local-path-provisioner) — crea volumi sul filesystem del nodo. Ideale per cluster locali di sviluppo. Viene impostato come StorageClass di default. |
+
+#### Esempio
+
+```yaml
+plugins:
+  storage:
+    enabled: true
+    type: local-path
+```
+
+Dopo l'installazione, la StorageClass `local-path` diventa il default del cluster. Qualsiasi PVC senza `storageClassName` esplicito userà questo provisioner.
+
+```bash
+# Verifica
+kubectl get storageclass
+# NAME                   PROVISIONER             RECLAIMPOLICY   DEFAULT
+# local-path (default)   rancher.io/local-path   Delete          Yes
+```
 
 ### Plugin ArgoCD
 
@@ -211,6 +253,47 @@ apps:
     repoURL: git@github.com:user/gitops-repo.git
     path: environments/dev
     targetRevision: main
+```
+
+## Upgrade del cluster
+
+Il comando `upgrade` aggiorna un cluster esistente applicando solo le differenze rispetto alla configurazione attuale. Il cluster non viene ricreato.
+
+```bash
+./deploy-cluster upgrade --config cluster.yaml
+```
+
+Cosa fa:
+- **Storage**: se abilitato e non installato, lo installa. Se già presente, ri-applica il manifest (idempotente).
+- **ArgoCD**: se abilitato e non installato, fa un'installazione completa. Se già presente:
+  - Ri-applica il manifest ArgoCD (aggiorna la versione se cambiata)
+  - **Repos**: applica quelli desiderati (idempotente), elimina quelli non più in configurazione
+  - **Apps**: applica quelle desiderate (idempotente), elimina quelle non più in configurazione
+  - Se disabilitato ma presente nel cluster, mostra un warning (non disinstalla automaticamente)
+
+## Status del cluster
+
+Il comando `status` mostra lo stato corrente del cluster e dei plugin installati.
+
+```bash
+./deploy-cluster status --config cluster.yaml
+```
+
+Output di esempio:
+
+```
+Cluster: my-cluster
+Provider: kind
+Status: running
+
+Storage: installed (local-path-provisioner)
+
+ArgoCD: installed (namespace: argocd)
+  Repos (1):
+    - app-repo
+  Apps (2):
+    - nginx
+    - my-app
 ```
 
 ## Accesso ad ArgoCD

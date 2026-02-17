@@ -6,6 +6,9 @@ cluster:
     workers: 1
     version: v1.31.0
 plugins:
+    storage:
+        enabled: true
+        type: local-path
     argocd:
         enabled: true
         namespace: argocd

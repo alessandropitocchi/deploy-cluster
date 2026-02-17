@@ -1,10 +1,14 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+var validProviders = []string{"kind"}
 
 type Config struct {
 	Name     string          `yaml:"name"`
@@ -84,6 +88,10 @@ func DefaultConfig() *Config {
 			Version:       "v1.31.0",
 		},
 		Plugins: PluginsConfig{
+			Storage: &StorageConfig{
+				Enabled: false,
+				Type:    "local-path",
+			},
 			ArgoCD: &ArgoCDConfig{
 				Enabled:   false,
 				Namespace: "argocd",
@@ -115,6 +123,59 @@ func DefaultConfig() *Config {
 	}
 }
 
+// Validate checks the config for errors and returns all found issues.
+func (c *Config) Validate() error {
+	var errs []string
+
+	if c.Name == "" {
+		errs = append(errs, "name is required")
+	}
+
+	if c.Provider.Type == "" {
+		errs = append(errs, "provider.type is required")
+	} else {
+		valid := false
+		for _, p := range validProviders {
+			if c.Provider.Type == p {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			errs = append(errs, fmt.Sprintf("provider.type %q is not supported (valid: %s)", c.Provider.Type, strings.Join(validProviders, ", ")))
+		}
+	}
+
+	if c.Cluster.ControlPlanes < 1 {
+		errs = append(errs, "cluster.controlPlanes must be at least 1")
+	}
+
+	if c.Cluster.Workers < 0 {
+		errs = append(errs, "cluster.workers cannot be negative")
+	}
+
+	if argo := c.Plugins.ArgoCD; argo != nil && argo.Enabled {
+		for i, repo := range argo.Repos {
+			if repo.URL == "" {
+				errs = append(errs, fmt.Sprintf("plugins.argocd.repos[%d]: url is required", i))
+			}
+		}
+		for i, app := range argo.Apps {
+			if app.Name == "" {
+				errs = append(errs, fmt.Sprintf("plugins.argocd.apps[%d]: name is required", i))
+			}
+			if app.RepoURL == "" {
+				errs = append(errs, fmt.Sprintf("plugins.argocd.apps[%d]: repoURL is required", i))
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("config validation failed:\n  - %s", strings.Join(errs, "\n  - "))
+	}
+	return nil
+}
+
 // Save writes the config to a YAML file
 func (c *Config) Save(path string) error {
 	data, err := yaml.Marshal(c)
@@ -132,6 +193,9 @@ func Load(path string) (*Config, error) {
 	}
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 	return &cfg, nil

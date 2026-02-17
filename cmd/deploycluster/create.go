@@ -5,7 +5,7 @@ import (
 
 	"github.com/alepito/deploy-cluster/pkg/config"
 	"github.com/alepito/deploy-cluster/pkg/plugin/argocd"
-	"github.com/alepito/deploy-cluster/pkg/provider/kind"
+	"github.com/alepito/deploy-cluster/pkg/plugin/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -56,6 +56,14 @@ var createCmd = &cobra.Command{
 		kubecontext := fmt.Sprintf("kind-%s", cfg.Name)
 
 		// Install plugins
+		if cfg.Plugins.Storage != nil && cfg.Plugins.Storage.Enabled {
+			fmt.Println()
+			storagePlugin := storage.New()
+			if err := storagePlugin.Install(cfg.Plugins.Storage, kubecontext); err != nil {
+				return fmt.Errorf("failed to install storage: %w", err)
+			}
+		}
+
 		if cfg.Plugins.ArgoCD != nil && cfg.Plugins.ArgoCD.Enabled {
 			fmt.Println()
 			argoPlugin := argocd.New()
@@ -69,17 +77,6 @@ var createCmd = &cobra.Command{
 
 		return nil
 	},
-}
-
-func getProvider(providerType string) (interface {
-	Create(*config.Config) error
-}, error) {
-	switch providerType {
-	case "kind":
-		return kind.New(), nil
-	default:
-		return nil, fmt.Errorf("unknown provider: %s", providerType)
-	}
 }
 
 func init() {

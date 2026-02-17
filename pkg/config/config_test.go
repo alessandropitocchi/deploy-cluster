@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -215,5 +216,212 @@ cluster:
 	}
 	if cfg.Cluster.Workers != 0 {
 		t.Errorf("Workers = %d, want 0", cfg.Cluster.Workers)
+	}
+}
+
+// --- Validation tests ---
+
+func TestValidate_ValidConfig(t *testing.T) {
+	cfg := DefaultConfig()
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() should pass for default config, got: %v", err)
+	}
+}
+
+func TestValidate_EmptyName(t *testing.T) {
+	cfg := &Config{
+		Provider: ProviderConfig{Type: "kind"},
+		Cluster:  ClusterConfig{ControlPlanes: 1, Workers: 0},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail for empty name")
+	}
+	if !strings.Contains(err.Error(), "name is required") {
+		t.Errorf("error should mention name, got: %v", err)
+	}
+}
+
+func TestValidate_EmptyProviderType(t *testing.T) {
+	cfg := &Config{
+		Name:    "test",
+		Cluster: ClusterConfig{ControlPlanes: 1, Workers: 0},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail for empty provider type")
+	}
+	if !strings.Contains(err.Error(), "provider.type is required") {
+		t.Errorf("error should mention provider.type, got: %v", err)
+	}
+}
+
+func TestValidate_InvalidProviderType(t *testing.T) {
+	cfg := &Config{
+		Name:     "test",
+		Provider: ProviderConfig{Type: "docker-desktop"},
+		Cluster:  ClusterConfig{ControlPlanes: 1, Workers: 0},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail for invalid provider type")
+	}
+	if !strings.Contains(err.Error(), "not supported") {
+		t.Errorf("error should mention not supported, got: %v", err)
+	}
+}
+
+func TestValidate_ZeroControlPlanes(t *testing.T) {
+	cfg := &Config{
+		Name:     "test",
+		Provider: ProviderConfig{Type: "kind"},
+		Cluster:  ClusterConfig{ControlPlanes: 0, Workers: 1},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail for 0 control planes")
+	}
+	if !strings.Contains(err.Error(), "controlPlanes must be at least 1") {
+		t.Errorf("error should mention controlPlanes, got: %v", err)
+	}
+}
+
+func TestValidate_NegativeWorkers(t *testing.T) {
+	cfg := &Config{
+		Name:     "test",
+		Provider: ProviderConfig{Type: "kind"},
+		Cluster:  ClusterConfig{ControlPlanes: 1, Workers: -1},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail for negative workers")
+	}
+	if !strings.Contains(err.Error(), "workers cannot be negative") {
+		t.Errorf("error should mention workers, got: %v", err)
+	}
+}
+
+func TestValidate_ArgoCDAppMissingName(t *testing.T) {
+	cfg := &Config{
+		Name:     "test",
+		Provider: ProviderConfig{Type: "kind"},
+		Cluster:  ClusterConfig{ControlPlanes: 1, Workers: 0},
+		Plugins: PluginsConfig{
+			ArgoCD: &ArgoCDConfig{
+				Enabled: true,
+				Apps: []ArgoCDAppConfig{
+					{RepoURL: "https://example.com"},
+				},
+			},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail for app without name")
+	}
+	if !strings.Contains(err.Error(), "name is required") {
+		t.Errorf("error should mention app name, got: %v", err)
+	}
+}
+
+func TestValidate_ArgoCDAppMissingRepoURL(t *testing.T) {
+	cfg := &Config{
+		Name:     "test",
+		Provider: ProviderConfig{Type: "kind"},
+		Cluster:  ClusterConfig{ControlPlanes: 1, Workers: 0},
+		Plugins: PluginsConfig{
+			ArgoCD: &ArgoCDConfig{
+				Enabled: true,
+				Apps: []ArgoCDAppConfig{
+					{Name: "my-app"},
+				},
+			},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail for app without repoURL")
+	}
+	if !strings.Contains(err.Error(), "repoURL is required") {
+		t.Errorf("error should mention repoURL, got: %v", err)
+	}
+}
+
+func TestValidate_ArgoCDRepoMissingURL(t *testing.T) {
+	cfg := &Config{
+		Name:     "test",
+		Provider: ProviderConfig{Type: "kind"},
+		Cluster:  ClusterConfig{ControlPlanes: 1, Workers: 0},
+		Plugins: PluginsConfig{
+			ArgoCD: &ArgoCDConfig{
+				Enabled: true,
+				Repos: []ArgoCDRepoConfig{
+					{Name: "no-url"},
+				},
+			},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail for repo without url")
+	}
+	if !strings.Contains(err.Error(), "url is required") {
+		t.Errorf("error should mention url, got: %v", err)
+	}
+}
+
+func TestValidate_MultipleErrors(t *testing.T) {
+	cfg := &Config{} // everything missing
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail")
+	}
+	// Should report name, provider.type, and controlPlanes errors
+	if !strings.Contains(err.Error(), "name is required") {
+		t.Error("should report name error")
+	}
+	if !strings.Contains(err.Error(), "provider.type is required") {
+		t.Error("should report provider.type error")
+	}
+	if !strings.Contains(err.Error(), "controlPlanes must be at least 1") {
+		t.Error("should report controlPlanes error")
+	}
+}
+
+func TestValidate_DisabledArgoCDSkipsValidation(t *testing.T) {
+	cfg := &Config{
+		Name:     "test",
+		Provider: ProviderConfig{Type: "kind"},
+		Cluster:  ClusterConfig{ControlPlanes: 1, Workers: 0},
+		Plugins: PluginsConfig{
+			ArgoCD: &ArgoCDConfig{
+				Enabled: false,
+				Apps:    []ArgoCDAppConfig{{Name: ""}}, // invalid but disabled
+			},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() should skip ArgoCD validation when disabled, got: %v", err)
+	}
+}
+
+func TestLoad_ValidationFailure(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "invalid.yaml")
+
+	content := `name: ""
+provider:
+  type: kind
+cluster:
+  controlPlanes: 0
+  workers: 0
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Error("Load() should fail when validation fails")
 	}
 }

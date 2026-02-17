@@ -5,7 +5,7 @@ import (
 
 	"github.com/alepito/deploy-cluster/pkg/config"
 	"github.com/alepito/deploy-cluster/pkg/plugin/argocd"
-	"github.com/alepito/deploy-cluster/pkg/provider/kind"
+	"github.com/alepito/deploy-cluster/pkg/plugin/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -34,7 +34,7 @@ compared to the current state. The cluster is not recreated, but plugins
 		}
 
 		// Get provider and check cluster exists
-		provider, err := getUpgradeProvider(cfg.Provider.Type)
+		provider, err := getProvider(cfg.Provider.Type)
 		if err != nil {
 			return err
 		}
@@ -51,6 +51,26 @@ compared to the current state. The cluster is not recreated, but plugins
 
 		// Determine kubecontext based on provider
 		kubecontext := fmt.Sprintf("kind-%s", cfg.Name)
+
+		// Upgrade storage plugin
+		if cfg.Plugins.Storage != nil && cfg.Plugins.Storage.Enabled {
+			storagePlugin := storage.New()
+			installed, err := storagePlugin.IsInstalled(kubecontext)
+			if err != nil {
+				return fmt.Errorf("failed to check storage status: %w", err)
+			}
+			if !installed {
+				fmt.Println("[storage] Storage not installed, performing installation...")
+				if err := storagePlugin.Install(cfg.Plugins.Storage, kubecontext); err != nil {
+					return fmt.Errorf("failed to install storage: %w", err)
+				}
+			} else {
+				fmt.Println("[storage] Storage already installed, re-applying...")
+				if err := storagePlugin.Install(cfg.Plugins.Storage, kubecontext); err != nil {
+					return fmt.Errorf("failed to upgrade storage: %w", err)
+				}
+			}
+		}
 
 		// Upgrade ArgoCD plugin
 		argoPlugin := argocd.New()
@@ -93,17 +113,6 @@ compared to the current state. The cluster is not recreated, but plugins
 		fmt.Printf("\nUpgrade completed for cluster '%s'.\n", cfg.Name)
 		return nil
 	},
-}
-
-func getUpgradeProvider(providerType string) (interface {
-	Exists(string) (bool, error)
-}, error) {
-	switch providerType {
-	case "kind":
-		return kind.New(), nil
-	default:
-		return nil, fmt.Errorf("unknown provider: %s", providerType)
-	}
 }
 
 func init() {

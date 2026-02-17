@@ -380,7 +380,7 @@ func (p *Plugin) Upgrade(cfg *config.ArgoCDConfig, kubecontext string) error {
 		desiredRepos[name] = repo
 	}
 
-	currentRepos, err := p.listCurrentRepos(kubecontext, namespace)
+	currentRepos, err := p.ListCurrentRepos(kubecontext, namespace)
 	if err != nil {
 		return fmt.Errorf("failed to list current repos: %w", err)
 	}
@@ -414,7 +414,7 @@ func (p *Plugin) Upgrade(cfg *config.ArgoCDConfig, kubecontext string) error {
 		desiredApps[app.Name] = app
 	}
 
-	currentApps, err := p.listCurrentApps(kubecontext, namespace)
+	currentApps, err := p.ListCurrentApps(kubecontext, namespace)
 	if err != nil {
 		return fmt.Errorf("failed to list current apps: %w", err)
 	}
@@ -463,7 +463,7 @@ func (p *Plugin) repoName(repo config.ArgoCDRepoConfig) string {
 
 // listCurrentRepos returns the names of repo secrets (without the "repo-" prefix)
 // that have the ArgoCD repository label.
-func (p *Plugin) listCurrentRepos(kubecontext, namespace string) ([]string, error) {
+func (p *Plugin) ListCurrentRepos(kubecontext, namespace string) ([]string, error) {
 	cmd := exec.Command("kubectl", "--context", kubecontext,
 		"get", "secrets", "-n", namespace,
 		"-l", "argocd.argoproj.io/secret-type=repository",
@@ -488,7 +488,7 @@ func (p *Plugin) listCurrentRepos(kubecontext, namespace string) ([]string, erro
 }
 
 // listCurrentApps returns the names of ArgoCD Application resources in the namespace.
-func (p *Plugin) listCurrentApps(kubecontext, namespace string) ([]string, error) {
+func (p *Plugin) ListCurrentApps(kubecontext, namespace string) ([]string, error) {
 	cmd := exec.Command("kubectl", "--context", kubecontext,
 		"get", "applications.argoproj.io", "-n", namespace,
 		"-o", "jsonpath={.items[*].metadata.name}")

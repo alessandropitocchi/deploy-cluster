@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/alepito/deploy-cluster/pkg/config"
-	"github.com/alepito/deploy-cluster/pkg/provider/kind"
 	"github.com/spf13/cobra"
 )
 
@@ -35,7 +34,7 @@ var destroyCmd = &cobra.Command{
 		}
 
 		// Get provider
-		provider, err := getDestroyProvider(providerType)
+		provider, err := getProvider(providerType)
 		if err != nil {
 			return err
 		}
@@ -49,17 +48,6 @@ var destroyCmd = &cobra.Command{
 		fmt.Printf("Cluster '%s' destroyed successfully!\n", clusterName)
 		return nil
 	},
-}
-
-func getDestroyProvider(providerType string) (interface {
-	Delete(string) error
-}, error) {
-	switch providerType {
-	case "kind":
-		return kind.New(), nil
-	default:
-		return nil, fmt.Errorf("unknown provider: %s", providerType)
-	}
 }
 
 func init() {
