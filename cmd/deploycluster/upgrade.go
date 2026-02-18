@@ -6,6 +6,7 @@ import (
 	"github.com/alepito/deploy-cluster/pkg/config"
 	"github.com/alepito/deploy-cluster/pkg/plugin/argocd"
 	"github.com/alepito/deploy-cluster/pkg/plugin/certmanager"
+	"github.com/alepito/deploy-cluster/pkg/plugin/customapps"
 	"github.com/alepito/deploy-cluster/pkg/plugin/dashboard"
 	"github.com/alepito/deploy-cluster/pkg/plugin/ingress"
 	"github.com/alepito/deploy-cluster/pkg/plugin/monitoring"
@@ -162,6 +163,15 @@ Use --dry-run to preview changes without applying them.`,
 			}
 		}
 
+		// Upgrade custom apps
+		if len(cfg.Plugins.CustomApps) > 0 {
+			fmt.Println("[customApps] Upgrading custom apps...")
+			customPlugin := customapps.New()
+			if err := customPlugin.InstallAll(cfg.Plugins.CustomApps, kubecontext); err != nil {
+				return fmt.Errorf("failed to upgrade custom apps: %w", err)
+			}
+		}
+
 		// Upgrade ArgoCD plugin
 		argoPlugin := argocd.New()
 
@@ -282,6 +292,32 @@ func runUpgradeDryRun(cfg *config.Config, kubecontext string) error {
 			fmt.Printf("\n[dashboard] %s: installed (re-apply)\n", cfg.Plugins.Dashboard.Type)
 		} else {
 			fmt.Printf("\n[dashboard] %s: not installed (will install)\n", cfg.Plugins.Dashboard.Type)
+		}
+	}
+
+	// Custom Apps
+	if len(cfg.Plugins.CustomApps) > 0 {
+		customPlugin := customapps.New()
+		customPlugin.Verbose = false
+		fmt.Println("\n[customApps] Custom apps:")
+		for _, app := range cfg.Plugins.CustomApps {
+			ns := app.Namespace
+			if ns == "" {
+				ns = app.Name
+			}
+			installed, err := customPlugin.IsInstalled(app.Name, ns, kubecontext)
+			if err != nil {
+				return fmt.Errorf("failed to check custom app %s status: %w", app.Name, err)
+			}
+			version := app.Version
+			if version == "" {
+				version = "latest"
+			}
+			if installed {
+				fmt.Printf("  ~ %s (%s@%s) (update)\n", app.Name, app.Chart, version)
+			} else {
+				fmt.Printf("  + %s (%s@%s) (install)\n", app.Name, app.Chart, version)
+			}
 		}
 	}
 

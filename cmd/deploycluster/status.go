@@ -6,6 +6,7 @@ import (
 	"github.com/alepito/deploy-cluster/pkg/config"
 	"github.com/alepito/deploy-cluster/pkg/plugin/argocd"
 	"github.com/alepito/deploy-cluster/pkg/plugin/certmanager"
+	"github.com/alepito/deploy-cluster/pkg/plugin/customapps"
 	"github.com/alepito/deploy-cluster/pkg/plugin/dashboard"
 	"github.com/alepito/deploy-cluster/pkg/plugin/ingress"
 	"github.com/alepito/deploy-cluster/pkg/plugin/monitoring"
@@ -107,6 +108,25 @@ var statusCmd = &cobra.Command{
 			fmt.Printf("\nDashboard: installed (headlamp)\n")
 		} else {
 			fmt.Printf("\nDashboard: not installed\n")
+		}
+
+		// Custom Apps status
+		if len(cfg.Plugins.CustomApps) > 0 {
+			customPlugin := customapps.New()
+			customPlugin.Verbose = false
+			installed, _ := customPlugin.ListInstalled(cfg.Plugins.CustomApps, kubecontext)
+			installedSet := make(map[string]bool)
+			for _, name := range installed {
+				installedSet[name] = true
+			}
+			fmt.Printf("\nCustom Apps (%d configured):\n", len(cfg.Plugins.CustomApps))
+			for _, app := range cfg.Plugins.CustomApps {
+				if installedSet[app.Name] {
+					fmt.Printf("  - %s: installed\n", app.Name)
+				} else {
+					fmt.Printf("  - %s: not installed\n", app.Name)
+				}
+			}
 		}
 
 		// ArgoCD status

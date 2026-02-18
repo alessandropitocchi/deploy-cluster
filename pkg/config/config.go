@@ -39,6 +39,7 @@ type PluginsConfig struct {
 	CertManager *CertManagerConfig `yaml:"certManager,omitempty"`
 	Monitoring  *MonitoringConfig  `yaml:"monitoring,omitempty"`
 	Dashboard   *DashboardConfig   `yaml:"dashboard,omitempty"`
+	CustomApps  []CustomAppConfig  `yaml:"customApps,omitempty"`
 	ArgoCD      *ArgoCDConfig      `yaml:"argocd,omitempty"`
 }
 
@@ -118,6 +119,23 @@ type DashboardConfig struct {
 type DashboardIngressConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	Host    string `yaml:"host"` // Hostname (e.g. headlamp.localhost)
+}
+
+type CustomAppConfig struct {
+	Name       string                 `yaml:"name"`                // Release name
+	Chart      string                 `yaml:"chart"`               // Helm chart ref (OCI, repo URL, local path)
+	Version    string                 `yaml:"version,omitempty"`   // Chart version
+	Namespace  string                 `yaml:"namespace,omitempty"` // Target namespace (default: name)
+	Values     map[string]interface{} `yaml:"values,omitempty"`    // Inline Helm values
+	ValuesFile string                 `yaml:"valuesFile,omitempty"` // Path to external values file
+	Ingress    *CustomAppIngressConfig `yaml:"ingress,omitempty"`  // Optional ingress
+}
+
+type CustomAppIngressConfig struct {
+	Enabled     bool   `yaml:"enabled"`
+	Host        string `yaml:"host"`                    // Hostname
+	ServiceName string `yaml:"serviceName,omitempty"`   // Backend service name (default: release name)
+	ServicePort int    `yaml:"servicePort,omitempty"`   // Backend service port (default: 80)
 }
 
 // DefaultConfig returns a starter configuration
@@ -285,6 +303,20 @@ func (c *Config) Validate() error {
 		if ing := dash.Ingress; ing != nil && ing.Enabled {
 			if ing.Host == "" {
 				errs = append(errs, "plugins.dashboard.ingress.host is required when ingress is enabled")
+			}
+		}
+	}
+
+	for i, app := range c.Plugins.CustomApps {
+		if app.Name == "" {
+			errs = append(errs, fmt.Sprintf("plugins.customApps[%d]: name is required", i))
+		}
+		if app.Chart == "" {
+			errs = append(errs, fmt.Sprintf("plugins.customApps[%d]: chart is required", i))
+		}
+		if ing := app.Ingress; ing != nil && ing.Enabled {
+			if ing.Host == "" {
+				errs = append(errs, fmt.Sprintf("plugins.customApps[%d].ingress: host is required when ingress is enabled", i))
 			}
 		}
 	}

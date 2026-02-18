@@ -27,6 +27,15 @@ plugins:
         ingress:
             enabled: true
             host: headlamp.localhost
+    customApps:
+        - name: redis
+          chart: oci://registry-1.docker.io/bitnamicharts/redis
+          version: "21.1.5"
+          namespace: redis
+          values:
+            architecture: standalone
+            auth:
+                enabled: false
     argocd:
         enabled: true
         namespace: argocd
