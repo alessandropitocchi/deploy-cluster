@@ -4,19 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**deploy-cluster** is a CLI tool for deploying Kubernetes clusters on kind (Kubernetes in Docker). It allows users to define cluster topology and install plugins (storage, ingress, cert-manager, monitoring, ArgoCD) from a single YAML configuration file.
+**deploy-cluster** is a CLI tool for deploying Kubernetes clusters on kind (Kubernetes in Docker). It allows users to define cluster topology and install plugins (storage, ingress, cert-manager, monitoring, dashboard, custom Helm apps, ArgoCD) from a single YAML configuration file.
 
 ## Architecture
 
 ### Core Concepts
 
 - **Providers**: Abstraction layer for cluster providers. Interface in `pkg/provider/provider.go`. Currently implemented: **kind**.
-- **Plugins**: Modular components installed on clusters. Each plugin has its own package under `pkg/plugin/`. Implemented: **storage** (local-path-provisioner), **ingress** (nginx), **cert-manager**, **monitoring** (kube-prometheus), **ArgoCD**.
+- **Plugins**: Modular components installed on clusters. Each plugin has its own package under `pkg/plugin/`. Implemented: **storage** (local-path-provisioner), **ingress** (nginx), **cert-manager**, **monitoring** (kube-prometheus-stack via Helm), **dashboard** (Headlamp via Helm), **customApps** (arbitrary Helm charts), **ArgoCD**.
 - **Config**: Single `cluster.yaml` defines cluster topology + all plugins. Parsed and validated in `pkg/config/`.
 
 ### Plugin Installation Order
 
-`create` and `upgrade` install plugins in this order: **storage → ingress → cert-manager → monitoring → ArgoCD**. Storage first so PVCs are available; ingress before ArgoCD so Ingress resources work immediately; cert-manager before monitoring for TLS support.
+`create` and `upgrade` install plugins in this order: **storage → ingress → cert-manager → monitoring → dashboard → customApps → ArgoCD**. Storage first so PVCs are available; ingress before others so Ingress resources work; ArgoCD last because it may depend on everything else.
+
+### Ingress Integration
+
+When `plugins.ingress` is enabled, the kind config automatically adds `ingress-ready=true` label and port mappings (80/443) to the first control-plane node. Several plugins support optional `ingress` sub-config to expose their UI (ArgoCD, monitoring/Grafana, dashboard/Headlamp, customApps).
 
 ## Commands
 
@@ -38,7 +42,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Language**: Go
 - **CLI Framework**: cobra
 - **Config Format**: YAML (gopkg.in/yaml.v3)
-- **Cluster Interaction**: kubectl commands via `os/exec`
+- **Cluster Interaction**: kubectl and helm commands via `os/exec`
 
 ### Build & Test
 ```bash
@@ -65,27 +69,35 @@ pkg/
   provider/
     provider.go             # Provider interface (Name, Create, Delete, Exists, KubeContext, GetKubeconfig)
     kind/
-      kind.go               # kind provider implementation
+      kind.go               # kind provider (generates kind config with ingress labels/ports)
   plugin/
     argocd/
-      argocd.go             # ArgoCD plugin (Install, Upgrade, DryRun, repos/apps diff)
+      argocd.go             # ArgoCD plugin (Install, Upgrade, DryRun, repos/apps diff, ingress, insecure mode)
     storage/
       storage.go            # Storage plugin (local-path-provisioner)
     ingress/
-      ingress.go            # Ingress plugin (nginx)
+      ingress.go            # Ingress plugin (nginx for kind)
     certmanager/
       certmanager.go        # Cert-manager plugin (TLS certificates)
     monitoring/
-      monitoring.go         # Monitoring plugin (kube-prometheus stack)
+      monitoring.go         # Monitoring plugin (kube-prometheus-stack via Helm OCI, Grafana ingress)
+    dashboard/
+      dashboard.go          # Dashboard plugin (Headlamp via Helm OCI, ingress)
+    customapps/
+      customapps.go         # Custom apps plugin (arbitrary Helm charts with values/ingress)
 ```
 
 ### Key Design Decisions
 - Provider abstraction: `KubeContext()` method avoids hardcoding `kind-<name>` everywhere
+- Kind config generates `kubeadmConfigPatches` with `ingress-ready=true` label when ingress plugin is enabled
 - ArgoCD `Upgrade()` is diff-based: applies all desired repos/apps (idempotent), removes those no longer in config
+- ArgoCD insecure mode uses `argocd-cmd-params-cm` ConfigMap (not container args patching)
 - Repo name generation is centralized in `repoName()` — used by both `addRepository` and `Upgrade` diff logic
 - Config `Validate()` runs inside `Load()` — invalid configs fail early
 - No generic Plugin interface — each plugin has typed config (ArgoCD receives `*ArgoCDConfig`, etc.)
-- Plugin installation is idempotent (`kubectl apply`)
+- Helm-based plugins (monitoring, dashboard, customApps) use `helm upgrade --install` for idempotency
+- customApps: inline `values` are written to temp files, `valuesFile` takes precedence over inline values
+- Plugin installation is idempotent (`kubectl apply` or `helm upgrade --install`)
 
 ### Testing
 Tests are colocated with source files (`*_test.go` in same package). Run with `go test ./...`.
@@ -96,5 +108,7 @@ Key test areas:
 - `pkg/plugin/storage/`: type routing, error messages
 - `pkg/plugin/ingress/`: type routing, error messages
 - `pkg/plugin/certmanager/`: version handling, manifest URL generation
-- `pkg/plugin/monitoring/`: type routing, manifest URLs
-- `pkg/provider/kind/`: generateKindConfig, KubeContext
+- `pkg/plugin/monitoring/`: type routing, chart version
+- `pkg/plugin/dashboard/`: type routing, chart version
+- `pkg/plugin/customapps/`: values resolution (inline, file, precedence)
+- `pkg/provider/kind/`: generateKindConfig (with/without ingress), KubeContext

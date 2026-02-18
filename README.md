@@ -2,7 +2,7 @@
 
 CLI tool per il deploy di cluster Kubernetes locali con supporto plugin.
 
-Permette di creare cluster con topologia configurabile (numero di worker e control plane) e installare automaticamente componenti come storage (local-path-provisioner), ingress (nginx) e ArgoCD, definendo repository e applicazioni direttamente da configurazione.
+Permette di creare cluster con topologia configurabile (numero di worker e control plane) e installare automaticamente componenti come storage (local-path-provisioner), ingress (nginx), cert-manager, monitoring (Prometheus/Grafana), dashboard (Headlamp), ArgoCD e applicazioni custom via Helm, definendo tutto da un singolo file di configurazione.
 
 ## Requisiti
 
@@ -10,6 +10,7 @@ Permette di creare cluster con topologia configurabile (numero di worker e contr
 - Docker
 - [kind](https://kind.sigs.k8s.io/)
 - kubectl
+- [Helm](https://helm.sh/) (per monitoring, dashboard e customApps)
 
 ## Installazione
 
@@ -32,6 +33,9 @@ go build -o deploy-cluster ./cmd/deploycluster
 ./deploy-cluster get clusters
 ./deploy-cluster get nodes my-cluster
 
+# Preview delle modifiche
+./deploy-cluster upgrade --config cluster.yaml --dry-run
+
 # Aggiorna i plugin senza ricreare il cluster
 ./deploy-cluster upgrade --config cluster.yaml
 
@@ -46,6 +50,7 @@ go build -o deploy-cluster ./cmd/deploycluster
 | `init` | Genera un file `cluster.yaml` di partenza |
 | `create` | Crea il cluster e installa i plugin configurati |
 | `upgrade` | Aggiorna i plugin di un cluster esistente (diff-based) |
+| `upgrade --dry-run` | Mostra le modifiche senza applicarle |
 | `status` | Mostra lo stato del cluster e dei plugin installati |
 | `destroy` | Distrugge il cluster |
 | `get clusters` | Lista tutti i cluster esistenti |
@@ -60,6 +65,7 @@ go build -o deploy-cluster ./cmd/deploycluster
 | `-e, --env` | create, upgrade | `.env` | File con variabili d'ambiente per i secret |
 | `-o, --output` | init | `cluster.yaml` | Path del file di output |
 | `-n, --name` | destroy | - | Nome del cluster (override del config) |
+| `--dry-run` | upgrade | `false` | Preview modifiche senza applicarle |
 
 ## Configurazione
 
@@ -88,10 +94,41 @@ plugins:
   monitoring:
     enabled: true
     type: prometheus
+    ingress:
+      enabled: true
+      host: grafana.localhost
+  dashboard:
+    enabled: true
+    type: headlamp
+    ingress:
+      enabled: true
+      host: headlamp.localhost
+  customApps:
+    - name: redis
+      chart: oci://registry-1.docker.io/bitnamicharts/redis
+      version: "21.1.5"
+      namespace: redis
+      values:
+        architecture: standalone
+        auth:
+          enabled: false
+    - name: rabbitmq
+      chart: oci://registry-1.docker.io/bitnamicharts/rabbitmq
+      version: "14.0.0"
+      namespace: rabbitmq
+      valuesFile: ./rabbitmq-values.yaml
+      ingress:
+        enabled: true
+        host: rabbitmq.localhost
+        serviceName: rabbitmq
+        servicePort: 15672
   argocd:
     enabled: true
     namespace: argocd
     version: stable
+    ingress:
+      enabled: true
+      host: argocd.localhost
     repos:
       - name: my-gitops-repo
         url: git@github.com:user/gitops-repo.git
@@ -109,6 +146,10 @@ plugins:
             type: ClusterIP
 ```
 
+### Ordine di installazione
+
+I plugin vengono installati in quest'ordine: **storage → ingress → cert-manager → monitoring → dashboard → customApps → ArgoCD**. Storage per primo in modo che i PVC siano disponibili; ingress prima degli altri per consentire l'accesso via hostname; ArgoCD per ultimo perché potrebbe dipendere da tutti gli altri.
+
 ### Cluster
 
 | Campo | Tipo | Default | Descrizione |
@@ -121,7 +162,7 @@ plugins:
 
 ### Plugin Storage
 
-Installa un provisioner per StorageClass nel cluster. Viene installato prima degli altri plugin, in modo che eventuali PVC richiesti da ArgoCD o altre app siano già disponibili.
+Installa un provisioner per StorageClass nel cluster. Viene installato prima degli altri plugin, in modo che eventuali PVC richiesti da altri componenti siano già disponibili.
 
 | Campo | Tipo | Default | Descrizione |
 |-------|------|---------|-------------|
@@ -134,8 +175,6 @@ Installa un provisioner per StorageClass nel cluster. Viene installato prima deg
 |------|-------------|
 | `local-path` | [Rancher local-path-provisioner](https://github.com/rancher/local-path-provisioner) — crea volumi sul filesystem del nodo. Ideale per cluster locali di sviluppo. Viene impostato come StorageClass di default. |
 
-#### Esempio
-
 ```yaml
 plugins:
   storage:
@@ -143,18 +182,9 @@ plugins:
     type: local-path
 ```
 
-Dopo l'installazione, la StorageClass `local-path` diventa il default del cluster. Qualsiasi PVC senza `storageClassName` esplicito userà questo provisioner.
-
-```bash
-# Verifica
-kubectl get storageclass
-# NAME                   PROVISIONER             RECLAIMPOLICY   DEFAULT
-# local-path (default)   rancher.io/local-path   Delete          Yes
-```
-
 ### Plugin Ingress
 
-Installa un ingress controller nel cluster per esporre i servizi via HTTP/HTTPS.
+Installa un ingress controller nel cluster per esporre i servizi via HTTP/HTTPS. Quando abilitato, il nodo control-plane di kind viene configurato automaticamente con la label `ingress-ready=true` e i port mapping per le porte 80 e 443.
 
 | Campo | Tipo | Default | Descrizione |
 |-------|------|---------|-------------|
@@ -165,9 +195,7 @@ Installa un ingress controller nel cluster per esporre i servizi via HTTP/HTTPS.
 
 | Tipo | Descrizione |
 |------|-------------|
-| `nginx` | [ingress-nginx](https://kubernetes.github.io/ingress-nginx/) — controller ufficiale NGINX per Kubernetes. Usa il manifest specifico per kind che configura automaticamente i port mapping. |
-
-#### Esempio
+| `nginx` | [ingress-nginx](https://kubernetes.github.io/ingress-nginx/) — controller ufficiale NGINX per Kubernetes. Usa il manifest specifico per kind. |
 
 ```yaml
 plugins:
@@ -176,18 +204,16 @@ plugins:
     type: nginx
 ```
 
-Dopo l'installazione, le risorse `Ingress` con `ingressClassName: nginx` vengono gestite automaticamente.
+Dopo l'installazione, le risorse `Ingress` con `ingressClassName: nginx` vengono gestite automaticamente. I servizi diventano raggiungibili su `http://<host>` tramite gli hostname configurati (es. `argocd.localhost`, `grafana.localhost`).
 
 ### Plugin Cert-Manager
 
-Installa [cert-manager](https://cert-manager.io/) per la gestione automatica dei certificati TLS nel cluster. Utile in combinazione con ingress per abilitare HTTPS.
+Installa [cert-manager](https://cert-manager.io/) per la gestione automatica dei certificati TLS nel cluster.
 
 | Campo | Tipo | Default | Descrizione |
 |-------|------|---------|-------------|
 | `enabled` | bool | `false` | Abilita l'installazione di cert-manager |
 | `version` | string | `v1.16.3` | Versione di cert-manager |
-
-#### Esempio
 
 ```yaml
 plugins:
@@ -196,36 +222,115 @@ plugins:
     version: v1.16.3
 ```
 
-Dopo l'installazione puoi creare risorse `Issuer`, `ClusterIssuer` e `Certificate` per ottenere certificati TLS automatici (es. Let's Encrypt, self-signed).
-
 ### Plugin Monitoring
 
-Installa lo stack [kube-prometheus](https://github.com/prometheus-operator/kube-prometheus) che include Prometheus, Grafana, Alertmanager, node-exporter e kube-state-metrics.
+Installa [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) via Helm (chart OCI), che include Prometheus, Grafana, Alertmanager, node-exporter e kube-state-metrics.
 
 | Campo | Tipo | Default | Descrizione |
 |-------|------|---------|-------------|
 | `enabled` | bool | `false` | Abilita l'installazione del monitoring |
 | `type` | string | **obbligatorio** | Tipo di stack: `prometheus` |
-
-#### Esempio
+| `version` | string | `72.6.2` | Versione del chart Helm |
+| `ingress.enabled` | bool | `false` | Crea un Ingress per Grafana |
+| `ingress.host` | string | - | Hostname per Grafana (es. `grafana.localhost`) |
 
 ```yaml
 plugins:
   monitoring:
     enabled: true
     type: prometheus
+    ingress:
+      enabled: true
+      host: grafana.localhost
 ```
 
 Dopo l'installazione:
 
 ```bash
-# Grafana (admin/admin)
-kubectl port-forward svc/grafana -n monitoring 3000:3000
-# http://localhost:3000
+# Con ingress: http://grafana.localhost (admin/prom-operator)
+
+# Senza ingress (port-forward):
+kubectl port-forward svc/kube-prometheus-stack-grafana -n monitoring 3000:80
+# http://localhost:3000 (admin/prom-operator)
 
 # Prometheus
-kubectl port-forward svc/prometheus-k8s -n monitoring 9090:9090
+kubectl port-forward svc/kube-prometheus-stack-prometheus -n monitoring 9090:9090
 # http://localhost:9090
+```
+
+### Plugin Dashboard
+
+Installa [Headlamp](https://headlamp.dev/) come dashboard Kubernetes via Helm.
+
+| Campo | Tipo | Default | Descrizione |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Abilita l'installazione del dashboard |
+| `type` | string | **obbligatorio** | Tipo di dashboard: `headlamp` |
+| `version` | string | `0.25.0` | Versione del chart Helm |
+| `ingress.enabled` | bool | `false` | Crea un Ingress per Headlamp |
+| `ingress.host` | string | - | Hostname per Headlamp (es. `headlamp.localhost`) |
+
+```yaml
+plugins:
+  dashboard:
+    enabled: true
+    type: headlamp
+    ingress:
+      enabled: true
+      host: headlamp.localhost
+```
+
+### Custom Apps
+
+Permette di installare qualsiasi chart Helm arbitrario senza dover creare un plugin dedicato. Ogni entry nella lista diventa un `helm upgrade --install`.
+
+| Campo | Tipo | Default | Descrizione |
+|-------|------|---------|-------------|
+| `name` | string | **obbligatorio** | Nome della release Helm |
+| `chart` | string | **obbligatorio** | Chart Helm (OCI, repo URL, path locale) |
+| `version` | string | - | Versione del chart |
+| `namespace` | string | uguale a `name` | Namespace di installazione |
+| `values` | map | - | Valori Helm inline |
+| `valuesFile` | string | - | Path a un file di values esterno |
+| `ingress.enabled` | bool | `false` | Crea un Ingress per l'app |
+| `ingress.host` | string | - | Hostname |
+| `ingress.serviceName` | string | uguale a `name` | Nome del service backend |
+| `ingress.servicePort` | int | `80` | Porta del service backend |
+
+#### Esempi
+
+```yaml
+plugins:
+  customApps:
+    # Chart OCI con values inline
+    - name: redis
+      chart: oci://registry-1.docker.io/bitnamicharts/redis
+      version: "21.1.5"
+      namespace: redis
+      values:
+        architecture: standalone
+        auth:
+          enabled: false
+
+    # Chart con values da file e ingress
+    - name: rabbitmq
+      chart: oci://registry-1.docker.io/bitnamicharts/rabbitmq
+      version: "14.0.0"
+      namespace: rabbitmq
+      valuesFile: ./rabbitmq-values.yaml
+      ingress:
+        enabled: true
+        host: rabbitmq.localhost
+        serviceName: rabbitmq
+        servicePort: 15672
+
+    # Chart senza versione specifica (latest)
+    - name: whoami
+      chart: oci://ghcr.io/traefik/charts/whoami
+      namespace: whoami
+      ingress:
+        enabled: true
+        host: whoami.localhost
 ```
 
 ### Plugin ArgoCD
@@ -235,6 +340,22 @@ kubectl port-forward svc/prometheus-k8s -n monitoring 9090:9090
 | `enabled` | bool | `false` | Abilita l'installazione di ArgoCD |
 | `namespace` | string | `argocd` | Namespace di installazione |
 | `version` | string | `stable` | Versione di ArgoCD |
+| `ingress.enabled` | bool | `false` | Crea un Ingress per la UI di ArgoCD |
+| `ingress.host` | string | - | Hostname (es. `argocd.localhost`) |
+| `ingress.tls` | bool | `false` | Abilita TLS via cert-manager |
+
+Quando l'ingress è abilitato, ArgoCD server viene configurato automaticamente in modalità `--insecure` (TLS interno disabilitato) tramite la ConfigMap `argocd-cmd-params-cm`, in modo che l'ingress nginx possa fare proxy HTTP.
+
+```yaml
+plugins:
+  argocd:
+    enabled: true
+    namespace: argocd
+    version: stable
+    ingress:
+      enabled: true
+      host: argocd.localhost
+```
 
 #### Repository (`repos`)
 
@@ -302,7 +423,7 @@ repos:
     password: ghp_xxxxxxxxxxxxx
 ```
 
-### Tipi di Application
+### Tipi di Application ArgoCD
 
 #### Helm chart da repository pubblica
 
@@ -345,6 +466,10 @@ apps:
 Il comando `upgrade` aggiorna un cluster esistente applicando solo le differenze rispetto alla configurazione attuale. Il cluster non viene ricreato.
 
 ```bash
+# Preview delle modifiche
+./deploy-cluster upgrade --config cluster.yaml --dry-run
+
+# Applica le modifiche
 ./deploy-cluster upgrade --config cluster.yaml
 ```
 
@@ -352,7 +477,9 @@ Cosa fa:
 - **Storage**: se abilitato e non installato, lo installa. Se già presente, ri-applica il manifest (idempotente).
 - **Ingress**: se abilitato e non installato, lo installa. Se già presente, ri-applica il manifest (idempotente).
 - **Cert-Manager**: se abilitato e non installato, lo installa. Se già presente, ri-applica il manifest (aggiorna versione se cambiata).
-- **Monitoring**: se abilitato e non installato, lo installa (CRDs + manifesti). Se già presente, ri-applica (idempotente).
+- **Monitoring**: se abilitato e non installato, lo installa via Helm. Se già presente, `helm upgrade` aggiorna (idempotente).
+- **Dashboard**: se abilitato e non installato, lo installa via Helm. Se già presente, `helm upgrade` aggiorna.
+- **Custom Apps**: ogni app viene installata/aggiornata con `helm upgrade --install` (idempotente).
 - **ArgoCD**: se abilitato e non installato, fa un'installazione completa. Se già presente:
   - Ri-applica il manifest ArgoCD (aggiorna la versione se cambiata)
   - **Repos**: applica quelli desiderati (idempotente), elimina quelli non più in configurazione
@@ -378,6 +505,16 @@ Storage: installed (local-path-provisioner)
 
 Ingress: installed (nginx)
 
+Cert-manager: installed
+
+Monitoring: installed (prometheus)
+
+Dashboard: installed (headlamp)
+
+Custom Apps (2 configured):
+  - redis: installed
+  - rabbitmq: installed
+
 ArgoCD: installed (namespace: argocd)
   Repos (1):
     - app-repo
@@ -386,16 +523,29 @@ ArgoCD: installed (namespace: argocd)
     - my-app
 ```
 
-## Accesso ad ArgoCD
+## Accesso alle UI
 
-Dopo la creazione del cluster con ArgoCD abilitato:
+Con ingress abilitato, le UI sono accessibili direttamente via hostname:
+
+| Servizio | URL | Credenziali |
+|----------|-----|-------------|
+| ArgoCD | `http://argocd.localhost` | admin / `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" \| base64 -d` |
+| Grafana | `http://grafana.localhost` | admin / prom-operator |
+| Headlamp | `http://headlamp.localhost` | Service Account token |
+| Prometheus | port-forward: `kubectl port-forward svc/kube-prometheus-stack-prometheus -n monitoring 9090:9090` | - |
+
+Senza ingress, usare `kubectl port-forward`:
 
 ```bash
-# Port forward per accedere alla UI
+# ArgoCD
 kubectl port-forward svc/argocd-server -n argocd 8080:443
+# https://localhost:8080
 
-# Apri https://localhost:8080
+# Grafana
+kubectl port-forward svc/kube-prometheus-stack-grafana -n monitoring 3000:80
+# http://localhost:3000
 
-# Ottieni la password admin
-kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+# Headlamp
+kubectl port-forward svc/headlamp -n headlamp 4466:80
+# http://localhost:4466
 ```

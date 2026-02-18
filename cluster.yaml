@@ -3,18 +3,12 @@ provider:
     type: kind
 cluster:
     controlPlanes: 1
-    workers: 1
+    workers: 2
     version: v1.31.0
 plugins:
-    storage:
-        enabled: true
-        type: local-path
     ingress:
         enabled: true
         type: nginx
-    certManager:
-        enabled: true
-        version: v1.16.3
     monitoring:
         enabled: true
         type: prometheus
@@ -27,15 +21,6 @@ plugins:
         ingress:
             enabled: true
             host: headlamp.localhost
-    customApps:
-        - name: redis
-          chart: oci://registry-1.docker.io/bitnamicharts/redis
-          version: "21.1.5"
-          namespace: redis
-          values:
-            architecture: standalone
-            auth:
-                enabled: false
     argocd:
         enabled: true
         namespace: argocd
@@ -43,16 +28,3 @@ plugins:
         ingress:
             enabled: true
             host: argocd.localhost
-        repos:
-            - name: app-repo
-              url: git@git.elmec.com:PITOCCHI/test-argo.git
-              type: git
-              sshKeyFile: ~/.ssh/id_ed25519
-        apps:
-            - name: metallb
-              namespace: demo-app
-              repoURL: https://metallb.github.io/metallb
-              chart: metallb
-              targetRevision: 0.15.3
-              values:
-                replicaCount: 3
