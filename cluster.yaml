@@ -21,6 +21,12 @@ plugins:
         ingress:
             enabled: true
             host: grafana.localhost
+    dashboard:
+        enabled: true
+        type: headlamp
+        ingress:
+            enabled: true
+            host: headlamp.localhost
     argocd:
         enabled: true
         namespace: argocd

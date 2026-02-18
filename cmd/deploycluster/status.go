@@ -6,6 +6,7 @@ import (
 	"github.com/alepito/deploy-cluster/pkg/config"
 	"github.com/alepito/deploy-cluster/pkg/plugin/argocd"
 	"github.com/alepito/deploy-cluster/pkg/plugin/certmanager"
+	"github.com/alepito/deploy-cluster/pkg/plugin/dashboard"
 	"github.com/alepito/deploy-cluster/pkg/plugin/ingress"
 	"github.com/alepito/deploy-cluster/pkg/plugin/monitoring"
 	"github.com/alepito/deploy-cluster/pkg/plugin/storage"
@@ -94,6 +95,18 @@ var statusCmd = &cobra.Command{
 			fmt.Printf("\nMonitoring: installed (prometheus)\n")
 		} else {
 			fmt.Printf("\nMonitoring: not installed\n")
+		}
+
+		// Dashboard status
+		dashPlugin := dashboard.New()
+		dashPlugin.Verbose = false
+		dashInstalled, err := dashPlugin.IsInstalled(kubecontext)
+		if err != nil {
+			fmt.Printf("\nDashboard: error checking (%v)\n", err)
+		} else if dashInstalled {
+			fmt.Printf("\nDashboard: installed (headlamp)\n")
+		} else {
+			fmt.Printf("\nDashboard: not installed\n")
 		}
 
 		// ArgoCD status

@@ -6,6 +6,7 @@ import (
 	"github.com/alepito/deploy-cluster/pkg/config"
 	"github.com/alepito/deploy-cluster/pkg/plugin/argocd"
 	"github.com/alepito/deploy-cluster/pkg/plugin/certmanager"
+	"github.com/alepito/deploy-cluster/pkg/plugin/dashboard"
 	"github.com/alepito/deploy-cluster/pkg/plugin/ingress"
 	"github.com/alepito/deploy-cluster/pkg/plugin/monitoring"
 	"github.com/alepito/deploy-cluster/pkg/plugin/storage"
@@ -88,6 +89,14 @@ var createCmd = &cobra.Command{
 			monPlugin := monitoring.New()
 			if err := monPlugin.Install(cfg.Plugins.Monitoring, kubecontext); err != nil {
 				return fmt.Errorf("failed to install monitoring: %w", err)
+			}
+		}
+
+		if cfg.Plugins.Dashboard != nil && cfg.Plugins.Dashboard.Enabled {
+			fmt.Println()
+			dashPlugin := dashboard.New()
+			if err := dashPlugin.Install(cfg.Plugins.Dashboard, kubecontext); err != nil {
+				return fmt.Errorf("failed to install dashboard: %w", err)
 			}
 		}
 

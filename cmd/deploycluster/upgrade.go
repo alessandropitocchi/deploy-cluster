@@ -6,6 +6,7 @@ import (
 	"github.com/alepito/deploy-cluster/pkg/config"
 	"github.com/alepito/deploy-cluster/pkg/plugin/argocd"
 	"github.com/alepito/deploy-cluster/pkg/plugin/certmanager"
+	"github.com/alepito/deploy-cluster/pkg/plugin/dashboard"
 	"github.com/alepito/deploy-cluster/pkg/plugin/ingress"
 	"github.com/alepito/deploy-cluster/pkg/plugin/monitoring"
 	"github.com/alepito/deploy-cluster/pkg/plugin/storage"
@@ -141,6 +142,26 @@ Use --dry-run to preview changes without applying them.`,
 			}
 		}
 
+		// Upgrade dashboard plugin
+		if cfg.Plugins.Dashboard != nil && cfg.Plugins.Dashboard.Enabled {
+			dashPlugin := dashboard.New()
+			installed, err := dashPlugin.IsInstalled(kubecontext)
+			if err != nil {
+				return fmt.Errorf("failed to check dashboard status: %w", err)
+			}
+			if !installed {
+				fmt.Println("[dashboard] Dashboard not installed, performing installation...")
+				if err := dashPlugin.Install(cfg.Plugins.Dashboard, kubecontext); err != nil {
+					return fmt.Errorf("failed to install dashboard: %w", err)
+				}
+			} else {
+				fmt.Println("[dashboard] Dashboard already installed, re-applying...")
+				if err := dashPlugin.Install(cfg.Plugins.Dashboard, kubecontext); err != nil {
+					return fmt.Errorf("failed to upgrade dashboard: %w", err)
+				}
+			}
+		}
+
 		// Upgrade ArgoCD plugin
 		argoPlugin := argocd.New()
 
@@ -246,6 +267,21 @@ func runUpgradeDryRun(cfg *config.Config, kubecontext string) error {
 			fmt.Printf("\n[monitoring] %s: installed (re-apply)\n", cfg.Plugins.Monitoring.Type)
 		} else {
 			fmt.Printf("\n[monitoring] %s: not installed (will install)\n", cfg.Plugins.Monitoring.Type)
+		}
+	}
+
+	// Dashboard
+	if cfg.Plugins.Dashboard != nil && cfg.Plugins.Dashboard.Enabled {
+		dashPlugin := dashboard.New()
+		dashPlugin.Verbose = false
+		installed, err := dashPlugin.IsInstalled(kubecontext)
+		if err != nil {
+			return fmt.Errorf("failed to check dashboard status: %w", err)
+		}
+		if installed {
+			fmt.Printf("\n[dashboard] %s: installed (re-apply)\n", cfg.Plugins.Dashboard.Type)
+		} else {
+			fmt.Printf("\n[dashboard] %s: not installed (will install)\n", cfg.Plugins.Dashboard.Type)
 		}
 	}
 

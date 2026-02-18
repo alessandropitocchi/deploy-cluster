@@ -13,6 +13,7 @@ var (
 	validStorageTypes    = []string{"local-path"}
 	validIngressTypes    = []string{"nginx"}
 	validMonitoringTypes = []string{"prometheus"}
+	validDashboardTypes  = []string{"headlamp"}
 )
 
 type Config struct {
@@ -37,6 +38,7 @@ type PluginsConfig struct {
 	Ingress     *IngressConfig     `yaml:"ingress,omitempty"`
 	CertManager *CertManagerConfig `yaml:"certManager,omitempty"`
 	Monitoring  *MonitoringConfig  `yaml:"monitoring,omitempty"`
+	Dashboard   *DashboardConfig   `yaml:"dashboard,omitempty"`
 	ArgoCD      *ArgoCDConfig      `yaml:"argocd,omitempty"`
 }
 
@@ -104,6 +106,18 @@ type MonitoringConfig struct {
 type MonitoringIngressConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	Host    string `yaml:"host"` // Hostname for Grafana (e.g. grafana.localhost)
+}
+
+type DashboardConfig struct {
+	Enabled bool                    `yaml:"enabled"`
+	Type    string                  `yaml:"type"`              // headlamp
+	Version string                  `yaml:"version,omitempty"` // chart version
+	Ingress *DashboardIngressConfig `yaml:"ingress,omitempty"` // Ingress for dashboard UI
+}
+
+type DashboardIngressConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Host    string `yaml:"host"` // Hostname (e.g. headlamp.localhost)
 }
 
 // DefaultConfig returns a starter configuration
@@ -249,6 +263,28 @@ func (c *Config) Validate() error {
 		if ing := mon.Ingress; ing != nil && ing.Enabled {
 			if ing.Host == "" {
 				errs = append(errs, "plugins.monitoring.ingress.host is required when ingress is enabled")
+			}
+		}
+	}
+
+	if dash := c.Plugins.Dashboard; dash != nil && dash.Enabled {
+		if dash.Type == "" {
+			errs = append(errs, "plugins.dashboard.type is required")
+		} else {
+			valid := false
+			for _, t := range validDashboardTypes {
+				if dash.Type == t {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				errs = append(errs, fmt.Sprintf("plugins.dashboard.type %q is not supported (valid: %s)", dash.Type, strings.Join(validDashboardTypes, ", ")))
+			}
+		}
+		if ing := dash.Ingress; ing != nil && ing.Enabled {
+			if ing.Host == "" {
+				errs = append(errs, "plugins.dashboard.ingress.host is required when ingress is enabled")
 			}
 		}
 	}
