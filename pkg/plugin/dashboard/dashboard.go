@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alepito/deploy-cluster/pkg/k8s"
 	"github.com/alepito/deploy-cluster/pkg/logger"
 	"github.com/alepito/deploy-cluster/pkg/retry"
 	"github.com/alepito/deploy-cluster/pkg/template"
@@ -138,27 +139,13 @@ subjects:
 func (p *Plugin) configureIngress(cfg *template.DashboardIngressTemplate, kubecontext string) error {
 	p.Log.Info("Configuring ingress for Headlamp...\n")
 
-	manifest := fmt.Sprintf(`apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: headlamp-ingress
-  namespace: %s
-  annotations:
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: %s
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: headlamp
-                port:
-                  number: 80`, namespace, cfg.Host)
+	manifest := k8s.IngressManifest(k8s.IngressConfig{
+		Name:        "headlamp-ingress",
+		Namespace:   namespace,
+		Host:        cfg.Host,
+		ServiceName: "headlamp",
+		ServicePort: 80,
+	})
 
 	err := retry.Run(3, 5*time.Second, p.Log.Warn, func() error {
 		cmd := execCommand("kubectl", "--context", kubecontext, "apply", "-f", "-")

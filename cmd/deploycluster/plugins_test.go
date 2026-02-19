@@ -72,3 +72,15 @@ func TestPrintSummary_NoPanic(t *testing.T) {
 		{Name: "ingress", Err: errors.New("timeout")},
 	}, log)
 }
+
+func TestUninstallPlugins_AllDisabled(t *testing.T) {
+	cfg := &template.Template{
+		Name:     "test",
+		Provider: template.ProviderTemplate{Type: "kind"},
+	}
+
+	results := uninstallPlugins(cfg, "kind-test", false)
+	if len(results) != 0 {
+		t.Errorf("expected 0 results, got %d", len(results))
+	}
+}

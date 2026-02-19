@@ -9,9 +9,10 @@ import (
 	texttemplate "text/template"
 	"time"
 
-	"github.com/alepito/deploy-cluster/pkg/template"
+	"github.com/alepito/deploy-cluster/pkg/k8s"
 	"github.com/alepito/deploy-cluster/pkg/logger"
 	"github.com/alepito/deploy-cluster/pkg/retry"
+	"github.com/alepito/deploy-cluster/pkg/template"
 	"gopkg.in/yaml.v3"
 )
 
@@ -667,40 +668,21 @@ data:
 	}
 
 	// Build Ingress manifest
-	tlsSection := ""
-	annotations := `    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"`
-	if cfg.TLS {
-		annotations = `    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"`
-		tlsSection = fmt.Sprintf(`  tls:
-    - hosts:
-        - %s
-      secretName: argocd-tls`, cfg.Host)
+	ingressCfg := k8s.IngressConfig{
+		Name:        "argocd-server-ingress",
+		Namespace:   namespace,
+		Host:        cfg.Host,
+		ServiceName: "argocd-server",
+		ServicePort: 80,
+		TLS:         cfg.TLS,
 	}
-
-	manifest := fmt.Sprintf(`apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: argocd-server-ingress
-  namespace: %s
-  annotations:
-%s
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: %s
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: argocd-server
-                port:
-                  number: 80
-%s`, namespace, annotations, cfg.Host, tlsSection)
+	if cfg.TLS {
+		ingressCfg.TLSSecret = "argocd-tls"
+		ingressCfg.Annotations = map[string]string{
+			"cert-manager.io/cluster-issuer": `"letsencrypt-prod"`,
+		}
+	}
+	manifest := k8s.IngressManifest(ingressCfg)
 
 	p.Log.Debug("Applying Ingress resource for host '%s'...\n", cfg.Host)
 	err = retry.Run(3, 5*time.Second, p.Log.Warn, func() error {

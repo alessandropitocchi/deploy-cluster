@@ -117,7 +117,7 @@ func TestRootFlags_TimeoutParsing(t *testing.T) {
 }
 
 func TestSubcommands_Registered(t *testing.T) {
-	expected := []string{"create", "upgrade", "destroy", "status", "init", "get"}
+	expected := []string{"create", "upgrade", "destroy", "status", "init", "get", "uninstall"}
 	commands := rootCmd.Commands()
 
 	registered := make(map[string]bool)

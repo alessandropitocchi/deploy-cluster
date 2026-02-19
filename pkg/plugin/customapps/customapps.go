@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alepito/deploy-cluster/pkg/k8s"
 	"github.com/alepito/deploy-cluster/pkg/logger"
 	"github.com/alepito/deploy-cluster/pkg/retry"
 	"github.com/alepito/deploy-cluster/pkg/template"
@@ -193,43 +194,25 @@ func (p *Plugin) resolveValues(app template.CustomAppTemplate) (string, func(), 
 
 func (p *Plugin) configureIngress(app template.CustomAppTemplate, kubecontext string) error {
 	ing := app.Ingress
-	namespace := app.Namespace
-	if namespace == "" {
-		namespace = app.Name
+	ns := app.Namespace
+	if ns == "" {
+		ns = app.Name
 	}
 
 	serviceName := ing.ServiceName
 	if serviceName == "" {
 		serviceName = app.Name
 	}
-	servicePort := ing.ServicePort
-	if servicePort == 0 {
-		servicePort = 80
-	}
 
 	p.Log.Info("Configuring ingress for %s (%s)...\n", app.Name, ing.Host)
 
-	manifest := fmt.Sprintf(`apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: %s-ingress
-  namespace: %s
-  annotations:
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: %s
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: %s
-                port:
-                  number: %d`, app.Name, namespace, ing.Host, serviceName, servicePort)
+	manifest := k8s.IngressManifest(k8s.IngressConfig{
+		Name:        app.Name + "-ingress",
+		Namespace:   ns,
+		Host:        ing.Host,
+		ServiceName: serviceName,
+		ServicePort: ing.ServicePort,
+	})
 
 	err := retry.Run(3, 5*time.Second, p.Log.Warn, func() error {
 		cmd := execCommand("kubectl", "--context", kubecontext, "apply", "-f", "-")

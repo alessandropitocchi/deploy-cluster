@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alepito/deploy-cluster/pkg/template"
+	"github.com/alepito/deploy-cluster/pkg/k8s"
 	"github.com/alepito/deploy-cluster/pkg/logger"
 	"github.com/alepito/deploy-cluster/pkg/retry"
+	"github.com/alepito/deploy-cluster/pkg/template"
 )
 
 // execCommand is a package-level variable for creating exec.Cmd, replaceable in tests.
@@ -115,27 +116,13 @@ func (p *Plugin) installPrometheus(cfg *template.MonitoringTemplate, kubecontext
 func (p *Plugin) configureGrafanaIngress(cfg *template.MonitoringIngressTemplate, kubecontext string) error {
 	p.Log.Info("Configuring ingress for Grafana...\n")
 
-	manifest := fmt.Sprintf(`apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: grafana-ingress
-  namespace: %s
-  annotations:
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: %s
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: kube-prometheus-stack-grafana
-                port:
-                  number: 80`, namespace, cfg.Host)
+	manifest := k8s.IngressManifest(k8s.IngressConfig{
+		Name:        "grafana-ingress",
+		Namespace:   namespace,
+		Host:        cfg.Host,
+		ServiceName: "kube-prometheus-stack-grafana",
+		ServicePort: 80,
+	})
 
 	err := retry.Run(3, 5*time.Second, p.Log.Warn, func() error {
 		cmd := execCommand("kubectl", "--context", kubecontext, "apply", "-f", "-")
