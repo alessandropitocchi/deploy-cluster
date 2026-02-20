@@ -12,6 +12,7 @@
 | [`get`](#get) | Subcommands for retrieving cluster information |
 | [`check`](#check) | Verify that all prerequisites are installed |
 | [`switch`](#switch) | Switch kubectl context between clusters |
+| [`snapshot`](#snapshot) | Save, restore, list, and delete cluster snapshots |
 
 ---
 
@@ -262,3 +263,122 @@ KIND CLUSTERS
 $ deploy-cluster switch my-cluster
 Switched to context 'kind-my-cluster'
 ```
+
+---
+
+## `snapshot`
+
+Manage cluster snapshots — export Kubernetes resources to disk and restore them later.
+
+### `snapshot save <name>`
+
+Export all non-system resources from the cluster to a local snapshot.
+
+```bash
+deploy-cluster snapshot save <name> [flags]
+```
+
+#### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-t, --template` | `template.yaml` | Template file |
+| `-e, --env` | `.env` | Environment file for secrets |
+| `--namespace` | *(all non-system)* | Comma-separated list of namespaces to snapshot |
+
+#### What gets exported
+
+- Dynamic resource discovery via `kubectl api-resources` (captures CRDs too)
+- One file per resource, stored at `~/.deploy-cluster/snapshots/<name>/`
+- Sanitized: removes `resourceVersion`, `uid`, `managedFields`, `status`, etc.
+
+#### What gets excluded
+
+- **System namespaces**: `kube-system`, `kube-public`, `kube-node-lease`, `local-path-storage`
+- **Transient resources**: events, endpoints, pods, replicasets, nodes, leases
+- **Controller-managed**: resources with `ownerReferences`
+- **Auto-created**: `kube-root-ca.crt` ConfigMaps, `default` ServiceAccounts, `kubernetes` Service
+
+#### Example
+
+```bash
+# Save all non-system resources
+deploy-cluster snapshot save before-upgrade --template template.yaml
+
+# Save only specific namespaces
+deploy-cluster snapshot save my-snap --namespace app,monitoring --template template.yaml
+```
+
+### `snapshot restore <name>`
+
+Restore resources from a saved snapshot to the cluster.
+
+```bash
+deploy-cluster snapshot restore <name> [flags]
+```
+
+#### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-t, --template` | `template.yaml` | Template file |
+| `-e, --env` | `.env` | Environment file for secrets |
+| `--dry-run` | `false` | Preview what would be applied without making changes |
+
+#### Restore Order
+
+Resources are applied in dependency order:
+
+1. **CRDs** + 5s wait for propagation
+2. **Namespaces**
+3. **Cluster-scoped**: ClusterRoles → ClusterRoleBindings → PersistentVolumes → other
+4. **Namespaced** (per namespace): ServiceAccounts → Secrets/ConfigMaps → PVCs → Services → Deployments/StatefulSets/DaemonSets → Ingresses → Jobs/CronJobs → custom resources
+
+Each `kubectl apply` uses retry with exponential backoff for transient errors.
+
+#### Example
+
+```bash
+# Preview restore
+deploy-cluster snapshot restore before-upgrade --dry-run --template template.yaml
+
+# Apply restore
+deploy-cluster snapshot restore before-upgrade --template template.yaml
+```
+
+### `snapshot list`
+
+Display all saved snapshots with metadata.
+
+```bash
+deploy-cluster snapshot list
+```
+
+#### Example
+
+```bash
+$ deploy-cluster snapshot list
+
+SNAPSHOTS
+─────────────────────────────────────────────────────────────
+• before-upgrade
+  Cluster: my-cluster (kind)
+  Resources: 42
+  Created: 2025-01-15 10:30:00
+```
+
+### `snapshot delete <name>`
+
+Permanently delete a snapshot from disk.
+
+```bash
+deploy-cluster snapshot delete <name>
+```
+
+#### Example
+
+```bash
+deploy-cluster snapshot delete before-upgrade
+```
+
+> **Security note:** Snapshots may contain Kubernetes Secrets in plain text.

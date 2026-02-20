@@ -29,12 +29,20 @@ func TestRestoreSnapshot_DryRun(t *testing.T) {
 
 	// Create a minimal snapshot structure
 	crdDir := filepath.Join(dir, "crds")
-	os.MkdirAll(crdDir, 0755)
-	os.WriteFile(filepath.Join(crdDir, "test-crd.yaml"), []byte(`{"apiVersion":"apiextensions.k8s.io/v1","kind":"CustomResourceDefinition"}`), 0644)
+	if err := os.MkdirAll(crdDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(crdDir, "test-crd.yaml"), []byte(`{"apiVersion":"apiextensions.k8s.io/v1","kind":"CustomResourceDefinition"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	nsDir := filepath.Join(dir, "namespaces")
-	os.MkdirAll(nsDir, 0755)
-	os.WriteFile(filepath.Join(nsDir, "default.yaml"), []byte(`{"apiVersion":"v1","kind":"Namespace"}`), 0644)
+	if err := os.MkdirAll(nsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nsDir, "default.yaml"), []byte(`{"apiVersion":"v1","kind":"Namespace"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	log := logger.New("[test]", logger.LevelQuiet)
 
@@ -56,7 +64,9 @@ func TestApplyOrderedSubdirs_Priority(t *testing.T) {
 	subdirs := []string{"deployments", "secrets", "services", "configmaps", "serviceaccounts", "ingresses"}
 	for _, sub := range subdirs {
 		subdir := filepath.Join(dir, sub)
-		os.MkdirAll(subdir, 0755)
+		if err := os.MkdirAll(subdir, 0755); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	entries, _ := os.ReadDir(dir)
@@ -116,7 +126,9 @@ func TestDirExists(t *testing.T) {
 
 	// File should return false
 	f := filepath.Join(dir, "file.txt")
-	os.WriteFile(f, []byte("test"), 0644)
+	if err := os.WriteFile(f, []byte("test"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	if dirExists(f) {
 		t.Error("file should return false")
 	}
@@ -125,7 +137,9 @@ func TestDirExists(t *testing.T) {
 func TestApplyFile_DryRun(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "test.yaml")
-	os.WriteFile(f, []byte(`{"apiVersion":"v1","kind":"ConfigMap"}`), 0644)
+	if err := os.WriteFile(f, []byte(`{"apiVersion":"v1","kind":"ConfigMap"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	log := logger.New("[test]", logger.LevelQuiet)
 
@@ -151,7 +165,9 @@ func TestApplyFile_KubectlFailure(t *testing.T) {
 
 	dir := t.TempDir()
 	f := filepath.Join(dir, "test.yaml")
-	os.WriteFile(f, []byte(`{"apiVersion":"v1","kind":"ConfigMap"}`), 0644)
+	if err := os.WriteFile(f, []byte(`{"apiVersion":"v1","kind":"ConfigMap"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	log := logger.New("[test]", logger.LevelQuiet)
 

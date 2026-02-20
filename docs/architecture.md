@@ -14,7 +14,8 @@ deploy-cluster/
 │   ├── init.go                  # init command: generates template.yaml
 │   ├── create.go                # create command: creates cluster + plugins
 │   ├── destroy.go               # destroy command: destroys cluster
-│   └── get.go                   # get command: cluster/node/kubeconfig info
+│   ├── get.go                   # get command: cluster/node/kubeconfig info
+│   └── snapshot.go              # snapshot command: save/restore/list/delete
 ├── pkg/
 │   ├── template/
 │   │   ├── template.go          # Template structs and YAML parsing
@@ -23,6 +24,12 @@ deploy-cluster/
 │   │   ├── provider.go          # Provider interface
 │   │   └── kind/
 │   │       └── kind.go          # kind provider implementation
+│   ├── snapshot/
+│   │   ├── snapshot.go          # Orchestration: Save/Restore/List/Delete
+│   │   ├── metadata.go          # Metadata struct + YAML serialization
+│   │   ├── discovery.go         # kubectl api-resources discovery + filtering
+│   │   ├── export.go            # Resource export + sanitization
+│   │   └── restore.go           # Ordered restore with dependency awareness
 │   └── plugin/
 │       ├── plugin.go            # Plugin interface
 │       └── argocd/
@@ -138,6 +145,48 @@ Applications are created as ArgoCD `Application` CRD resources. Supports:
 - **Git repo**: From a Git repository with `path` + `targetRevision`
 - **Values**: Inline in the template or from an external file (`valuesFile`)
 - **Sync policy**: Auto-sync enabled by default with prune and selfHeal
+
+## Snapshot System
+
+The snapshot system (`pkg/snapshot/`) provides backup and restore of Kubernetes resources. It works with any provider since it operates via kubectl.
+
+### Save Flow
+
+```
+Discover API resources → Export CRDs → Export Namespaces → Export cluster-scoped → Export namespaced → Save metadata
+```
+
+1. **Discovery**: `kubectl api-resources -o wide --verbs=list,get` identifies all resource types (including CRDs)
+2. **Filtering**: Excludes transient resources (events, endpoints, pods), infrastructure (nodes, leases), and controller-managed resources (ownerReferences)
+3. **Sanitization**: Removes cluster-specific fields (resourceVersion, uid, managedFields, status)
+4. **Storage**: One file per resource at `~/.deploy-cluster/snapshots/<name>/`
+
+### Restore Flow
+
+```
+CRDs (+ 5s wait) → Namespaces → Cluster-scoped (ordered) → Namespaced (ordered per namespace)
+```
+
+Resources are applied in dependency order with retry and exponential backoff for transient errors.
+
+### Snapshot Directory Layout
+
+```
+~/.deploy-cluster/snapshots/<name>/
+├── metadata.yaml
+├── crds/
+├── namespaces/
+├── cluster-scoped/
+│   ├── clusterroles/
+│   ├── clusterrolebindings/
+│   └── persistentvolumes/
+└── namespaced/
+    └── <namespace>/
+        ├── secrets/
+        ├── configmaps/
+        ├── deployments/
+        └── ...
+```
 
 ## Dependencies
 

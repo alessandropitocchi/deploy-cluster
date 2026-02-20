@@ -35,6 +35,17 @@ go build -o deploy-cluster ./cmd/deploycluster
 # Switch kubectl context between clusters
 ./deploy-cluster switch my-cluster
 
+# Save a snapshot of cluster resources
+./deploy-cluster snapshot save my-snapshot --template template.yaml
+
+# Restore a snapshot (preview first with --dry-run)
+./deploy-cluster snapshot restore my-snapshot --dry-run --template template.yaml
+./deploy-cluster snapshot restore my-snapshot --template template.yaml
+
+# List and delete snapshots
+./deploy-cluster snapshot list
+./deploy-cluster snapshot delete my-snapshot
+
 # Destroy the cluster
 ./deploy-cluster destroy --template template.yaml
 ```
@@ -105,6 +116,28 @@ With ingress enabled:
 | Grafana | `http://grafana.localhost` | admin / prom-operator |
 | Headlamp | `http://headlamp.localhost` | `kubectl create token headlamp -n headlamp` |
 | ArgoCD | `http://argocd.localhost` | admin / `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" \| base64 -d` |
+
+## Snapshots
+
+The `snapshot` command exports Kubernetes resources from a running cluster to disk and can restore them later. Useful for backup/restore, cluster migration, and disaster recovery.
+
+```bash
+# Save all non-system resources
+deploy-cluster snapshot save before-upgrade --template template.yaml
+
+# Save only specific namespaces
+deploy-cluster snapshot save my-snap --namespace app,monitoring --template template.yaml
+
+# Preview what a restore would apply
+deploy-cluster snapshot restore before-upgrade --dry-run --template template.yaml
+
+# Restore resources to the cluster
+deploy-cluster snapshot restore before-upgrade --template template.yaml
+```
+
+Snapshots are stored at `~/.deploy-cluster/snapshots/<name>/` with one file per resource. The restore follows a dependency-aware order: CRDs → Namespaces → cluster-scoped → namespaced resources.
+
+> **Note:** Snapshots may contain Kubernetes Secrets in plain text.
 
 ## Documentation
 
