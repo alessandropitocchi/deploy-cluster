@@ -20,6 +20,7 @@ type prerequisite struct {
 var prerequisites = []prerequisite{
 	{"docker", []string{"docker", "--version"}, "https://www.docker.com/"},
 	{"kind", []string{"kind", "--version"}, "https://kind.sigs.k8s.io/"},
+	{"k3d", []string{"k3d", "version"}, "https://k3d.io/"},
 	{"kubectl", []string{"kubectl", "version", "--client", "--short"}, "https://kubernetes.io/docs/tasks/tools/"},
 	{"helm", []string{"helm", "version", "--short"}, "https://helm.sh/"},
 }

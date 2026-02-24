@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**deploy-cluster** is a CLI tool for deploying Kubernetes clusters on kind (Kubernetes in Docker). It allows users to define cluster topology and install plugins (storage, ingress, cert-manager, monitoring, dashboard, custom Helm apps, ArgoCD) from a single YAML template file.
+**deploy-cluster** is a CLI tool for deploying Kubernetes clusters on kind (Kubernetes in Docker) or k3d (K3s in Docker). It allows users to define cluster topology and install plugins (storage, ingress, cert-manager, monitoring, dashboard, custom Helm apps, ArgoCD) from a single YAML template file.
 
 ## Architecture
 
 ### Core Concepts
 
-- **Providers**: Abstraction layer for cluster providers. Interface in `pkg/provider/provider.go`. Currently implemented: **kind**.
-- **Plugins**: Modular components installed on clusters. Each plugin has its own package under `pkg/plugin/`. Implemented: **storage** (local-path-provisioner), **ingress** (nginx), **cert-manager**, **monitoring** (kube-prometheus-stack via Helm), **dashboard** (Headlamp via Helm), **customApps** (arbitrary Helm charts), **ArgoCD**.
+- **Providers**: Abstraction layer for cluster providers. Interface in `pkg/provider/provider.go`. Implemented: **kind**, **k3d**.
+- **Plugins**: Modular components installed on clusters. Each plugin has its own package under `pkg/plugin/`. Implemented: **storage** (local-path-provisioner), **ingress** (nginx or traefik), **cert-manager**, **monitoring** (kube-prometheus-stack via Helm), **dashboard** (Headlamp via Helm), **customApps** (arbitrary Helm charts), **ArgoCD**.
 - **Template**: Single `template.yaml` defines cluster topology + all plugins. Parsed and validated in `pkg/template/`.
 
 ### Plugin Installation Order
@@ -20,7 +20,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Ingress Integration
 
-When `plugins.ingress` is enabled, the kind config automatically adds `ingress-ready=true` label and port mappings (80/443) to the first control-plane node. Several plugins support optional `ingress` sub-config to expose their UI (ArgoCD, monitoring/Grafana, dashboard/Headlamp, customApps).
+When `plugins.ingress` is enabled:
+- **kind**: config automatically adds `ingress-ready=true` label and port mappings (80/443) to the first control-plane node
+- **k3d**: port mappings go on the loadbalancer; if ingress type is nginx, Traefik is disabled (`--disable=traefik`); if type is traefik, the built-in Traefik is used as-is
+
+Several plugins support optional `ingress` sub-config to expose their UI (ArgoCD, monitoring/Grafana, dashboard/Headlamp, customApps).
 
 ## Commands
 
@@ -32,9 +36,9 @@ When `plugins.ingress` is enabled, the kind config automatically adds `ingress-r
 | `upgrade --dry-run` | Preview changes without applying |
 | `status` | Show cluster and plugin status |
 | `destroy` | Delete cluster |
-| `get clusters` | List kind clusters |
-| `get nodes <name>` | List cluster nodes |
-| `get kubeconfig <name>` | Print kubeconfig |
+| `get clusters [--provider]` | List clusters (kind and/or k3d) |
+| `get nodes <name> [--provider]` | List cluster nodes |
+| `get kubeconfig <name> [--provider]` | Print kubeconfig |
 | `snapshot save <name>` | Export cluster resources to a local snapshot |
 | `snapshot restore <name>` | Restore resources from a snapshot (supports `--dry-run`) |
 | `snapshot list` | List all saved snapshots |
@@ -81,13 +85,15 @@ pkg/
     provider.go             # Provider interface (Name, Create, Delete, Exists, KubeContext, GetKubeconfig)
     kind/
       kind.go               # kind provider (generates kind config with ingress labels/ports)
+    k3d/
+      k3d.go                # k3d provider (generates k3d SimpleConfig, loadbalancer ports, traefik disable)
   plugin/
     argocd/
       argocd.go             # ArgoCD plugin (Install, Upgrade, DryRun, repos/apps diff, ingress, insecure mode)
     storage/
       storage.go            # Storage plugin (local-path-provisioner)
     ingress/
-      ingress.go            # Ingress plugin (nginx for kind)
+      ingress.go            # Ingress plugin (nginx or traefik, provider-aware manifest URL)
     certmanager/
       certmanager.go        # Cert-manager plugin (TLS certificates)
     monitoring/
@@ -101,6 +107,8 @@ pkg/
 ### Key Design Decisions
 - Provider abstraction: `KubeContext()` method avoids hardcoding `kind-<name>` everywhere
 - Kind config generates `kubeadmConfigPatches` with `ingress-ready=true` label when ingress plugin is enabled
+- k3d config uses SimpleConfig (k3d.io/v1alpha5), ports on loadbalancer, disables Traefik when nginx is chosen
+- Ingress plugin is provider-aware: uses kind-specific or cloud nginx manifest URL based on provider type
 - ArgoCD `Upgrade()` is diff-based: applies all desired repos/apps (idempotent), removes those no longer in template
 - ArgoCD insecure mode uses `argocd-cmd-params-cm` ConfigMap (not container args patching)
 - Repo name generation is centralized in `repoName()` — used by both `addRepository` and `Upgrade` diff logic
@@ -128,4 +136,5 @@ Key test areas:
 - `pkg/plugin/dashboard/`: type routing, chart version
 - `pkg/plugin/customapps/`: values resolution (inline, file, precedence)
 - `pkg/provider/kind/`: generateKindConfig (with/without ingress), KubeContext
+- `pkg/provider/k3d/`: generateK3dConfig (single/multi node, version, ingress nginx/traefik), KubeContext
 - `pkg/snapshot/`: metadata round-trip, api-resources parsing, sanitizeResource, isSystemResource, restore ordering, dry-run

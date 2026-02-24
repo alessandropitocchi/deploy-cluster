@@ -44,10 +44,12 @@ that lets you choose which plugins to enable and configure.`,
 func runInitWizard() (*template.Template, error) {
 	// Form variables with defaults
 	var (
+		providerType  = "kind"
 		name          = "my-cluster"
 		version       = "v1.31.0"
 		controlPlanes = "1"
 		workers       = "2"
+		ingressType   = "nginx"
 		plugins       []string
 
 		// Ingress hosts
@@ -71,7 +73,18 @@ func runInitWizard() (*template.Template, error) {
 	}
 
 	form := huh.NewForm(
-		// Group 1: Cluster basics
+		// Group 1: Provider selection
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Cluster provider").
+				Options(
+					huh.NewOption("kind", "kind"),
+					huh.NewOption("k3d", "k3d"),
+				).
+				Value(&providerType),
+		).Title("Provider"),
+
+		// Group 2: Cluster basics
 		huh.NewGroup(
 			huh.NewInput().
 				Title("Cluster name").
@@ -110,13 +123,13 @@ func runInitWizard() (*template.Template, error) {
 				}),
 		).Title("Cluster Configuration"),
 
-		// Group 2: Plugin selection
+		// Group 3: Plugin selection
 		huh.NewGroup(
 			huh.NewMultiSelect[string]().
 				Title("Which plugins do you want to enable?").
 				Options(
 					huh.NewOption("Storage (local-path-provisioner)", "storage"),
-					huh.NewOption("Ingress (nginx)", "ingress"),
+					huh.NewOption("Ingress", "ingress"),
 					huh.NewOption("Cert-Manager", "certmanager"),
 					huh.NewOption("Monitoring (Prometheus + Grafana)", "monitoring"),
 					huh.NewOption("Dashboard (Headlamp)", "dashboard"),
@@ -124,6 +137,19 @@ func runInitWizard() (*template.Template, error) {
 				).
 				Value(&plugins),
 		).Title("Plugins"),
+
+		// Group: Ingress type selection (conditional: ingress selected)
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Ingress controller type").
+				Options(
+					huh.NewOption("nginx", "nginx"),
+					huh.NewOption("traefik", "traefik"),
+				).
+				Value(&ingressType),
+		).Title("Ingress Type").WithHideFunc(func() bool {
+			return !hasPlugin("ingress")
+		}),
 
 		// Group 3: Ingress hosts (conditional: ingress + target plugin selected)
 		huh.NewGroup(
@@ -174,7 +200,7 @@ func runInitWizard() (*template.Template, error) {
 	cfg := &template.Template{
 		Name: name,
 		Provider: template.ProviderTemplate{
-			Type: "kind",
+			Type: providerType,
 		},
 		Cluster: template.ClusterTemplate{
 			ControlPlanes: cp,
@@ -195,7 +221,7 @@ func runInitWizard() (*template.Template, error) {
 	if hasIngress {
 		cfg.Plugins.Ingress = &template.IngressTemplate{
 			Enabled: true,
-			Type:    "nginx",
+			Type:    ingressType,
 		}
 	}
 

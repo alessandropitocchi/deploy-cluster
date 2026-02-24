@@ -22,8 +22,10 @@ deploy-cluster/
 │   │   └── env.go               # .env file loader
 │   ├── provider/
 │   │   ├── provider.go          # Provider interface
-│   │   └── kind/
-│   │       └── kind.go          # kind provider implementation
+│   │   ├── kind/
+│   │   │   └── kind.go          # kind provider implementation
+│   │   └── k3d/
+│   │       └── k3d.go           # k3d provider implementation
 │   ├── snapshot/
 │   │   ├── snapshot.go          # Orchestration: Save/Restore/List/Delete
 │   │   ├── metadata.go          # Metadata struct + YAML serialization
@@ -85,7 +87,7 @@ type Provider interface {
 }
 ```
 
-Implementations: `kind` (current), `k3d` and `minikube` (future)
+Implementations: `kind`, `k3d`. Planned: `minikube`
 
 ### Plugin
 
@@ -208,7 +210,9 @@ Resources are applied in dependency order with retry and exponential backoff for
 - [x] `upgrade` command for updating plugins on existing clusters
 - [x] Snapshot system (save, restore, list, delete, diff)
 
+### Completed (continued)
+- [x] k3d provider (with traefik ingress support)
+
 ### Planned
-- [ ] k3d provider
 - [ ] minikube provider
 - [ ] Plugin interface standardization

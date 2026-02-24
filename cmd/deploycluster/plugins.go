@@ -40,7 +40,7 @@ func installPlugins(cfg *template.Template, kubecontext string, failFast bool) [
 		log.Info("\n")
 		pluginLog := newLogger("[ingress]")
 		ingressPlugin := ingress.New(pluginLog, globalTimeout)
-		err := ingressPlugin.Install(cfg.Plugins.Ingress, kubecontext)
+		err := ingressPlugin.Install(cfg.Plugins.Ingress, kubecontext, cfg.Provider.Type)
 		results = append(results, pluginResult{Name: "ingress", Err: err})
 		if err != nil && failFast {
 			return results
@@ -141,7 +141,7 @@ func upgradePlugins(cfg *template.Template, kubecontext string, failFast bool) [
 			} else {
 				pluginLog.Info("Ingress already installed, re-applying...\n")
 			}
-			err := ingressPlugin.Install(cfg.Plugins.Ingress, kubecontext)
+			err := ingressPlugin.Install(cfg.Plugins.Ingress, kubecontext, cfg.Provider.Type)
 			results = append(results, pluginResult{Name: "ingress", Err: err})
 		}
 		if hasErrors(results) && failFast {

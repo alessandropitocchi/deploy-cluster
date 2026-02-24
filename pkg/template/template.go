@@ -9,9 +9,9 @@ import (
 )
 
 var (
-	validProviders       = []string{"kind"}
+	validProviders       = []string{"kind", "k3d"}
 	validStorageTypes    = []string{"local-path"}
-	validIngressTypes    = []string{"nginx"}
+	validIngressTypes    = []string{"nginx", "traefik"}
 	validMonitoringTypes = []string{"prometheus"}
 	validDashboardTypes  = []string{"headlamp"}
 )

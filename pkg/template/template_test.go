@@ -514,7 +514,7 @@ func TestValidate_IngressInvalidType(t *testing.T) {
 		Provider: ProviderTemplate{Type: "kind"},
 		Cluster:  ClusterTemplate{ControlPlanes: 1, Workers: 0},
 		Plugins: PluginsTemplate{
-			Ingress: &IngressTemplate{Enabled: true, Type: "traefik"},
+			Ingress: &IngressTemplate{Enabled: true, Type: "haproxy"},
 		},
 	}
 	err := cfg.Validate()
@@ -523,6 +523,31 @@ func TestValidate_IngressInvalidType(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not supported") {
 		t.Errorf("error should mention not supported, got: %v", err)
+	}
+}
+
+func TestValidate_IngressTraefikType(t *testing.T) {
+	cfg := &Template{
+		Name:     "test",
+		Provider: ProviderTemplate{Type: "k3d"},
+		Cluster:  ClusterTemplate{ControlPlanes: 1, Workers: 0},
+		Plugins: PluginsTemplate{
+			Ingress: &IngressTemplate{Enabled: true, Type: "traefik"},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() should pass for traefik ingress type, got: %v", err)
+	}
+}
+
+func TestValidate_K3dProvider(t *testing.T) {
+	cfg := &Template{
+		Name:     "test",
+		Provider: ProviderTemplate{Type: "k3d"},
+		Cluster:  ClusterTemplate{ControlPlanes: 1, Workers: 0},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() should pass for k3d provider, got: %v", err)
 	}
 }
 

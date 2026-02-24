@@ -36,7 +36,7 @@ func TestInstallNginx_Commands(t *testing.T) {
 	p := New(quietLogger(), 5*time.Minute)
 	cfg := &template.IngressTemplate{Enabled: true, Type: "nginx"}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -65,7 +65,7 @@ func TestInstallNginx_CustomTimeout(t *testing.T) {
 	p := New(quietLogger(), 2*time.Minute)
 	cfg := &template.IngressTemplate{Enabled: true, Type: "nginx"}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -83,7 +83,7 @@ func TestInstallNginx_Namespace(t *testing.T) {
 	p := New(quietLogger(), 5*time.Minute)
 	cfg := &template.IngressTemplate{Enabled: true, Type: "nginx"}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 

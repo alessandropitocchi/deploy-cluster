@@ -7,22 +7,22 @@ cluster:
     version: v1.31.0
 plugins:
     storage:
-        enabled: true
+        enabled: false
         type: local-path
     ingress:
-        enabled: true
+        enabled: false
         type: nginx
     certManager:
         enabled: true
         version: v1.16.3
     monitoring:
-        enabled: true
+        enabled: false
         type: prometheus
         ingress:
             enabled: true
             host: grafana.localhost
     dashboard:
-        enabled: true
+        enabled: false
         type: headlamp
         ingress:
             enabled: true
