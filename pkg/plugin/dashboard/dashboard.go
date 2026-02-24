@@ -24,37 +24,53 @@ const (
 	namespace               = "headlamp"
 )
 
+// Plugin implements the plugin.Plugin interface for dashboard.
 type Plugin struct {
 	Log     *logger.Logger
 	Timeout time.Duration
 }
 
+// New creates a new dashboard plugin.
 func New(log *logger.Logger, timeout time.Duration) *Plugin {
 	return &Plugin{Log: log, Timeout: timeout}
 }
 
+// Name returns the plugin name.
 func (p *Plugin) Name() string {
 	return "dashboard"
 }
 
-func (p *Plugin) Install(cfg *template.DashboardTemplate, kubecontext string) error {
-	switch cfg.Type {
+// Install installs the dashboard plugin.
+func (p *Plugin) Install(cfg interface{}, kubecontext string, providerType string) error {
+	dashCfg, ok := cfg.(*template.DashboardTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for dashboard plugin: expected *template.DashboardTemplate")
+	}
+
+	switch dashCfg.Type {
 	case "headlamp":
-		return p.installHeadlamp(cfg, kubecontext)
+		return p.installHeadlamp(dashCfg, kubecontext)
 	default:
-		return fmt.Errorf("unsupported dashboard type: %s (supported: headlamp)", cfg.Type)
+		return fmt.Errorf("unsupported dashboard type: %s (supported: headlamp)", dashCfg.Type)
 	}
 }
 
-func (p *Plugin) Uninstall(cfg *template.DashboardTemplate, kubecontext string) error {
-	switch cfg.Type {
+// Uninstall removes the dashboard plugin.
+func (p *Plugin) Uninstall(cfg interface{}, kubecontext string) error {
+	dashCfg, ok := cfg.(*template.DashboardTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for dashboard plugin")
+	}
+
+	switch dashCfg.Type {
 	case "headlamp":
 		return p.uninstallHeadlamp(kubecontext)
 	default:
-		return fmt.Errorf("unsupported dashboard type: %s", cfg.Type)
+		return fmt.Errorf("unsupported dashboard type: %s", dashCfg.Type)
 	}
 }
 
+// IsInstalled checks if dashboard is installed.
 func (p *Plugin) IsInstalled(kubecontext string) (bool, error) {
 	cmd := execCommand("helm", "status", releaseName,
 		"--namespace", namespace, "--kube-context", kubecontext)
@@ -62,6 +78,41 @@ func (p *Plugin) IsInstalled(kubecontext string) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+// Upgrade re-applies the dashboard configuration (idempotent).
+func (p *Plugin) Upgrade(cfg interface{}, kubecontext string, providerType string) error {
+	// For dashboard, upgrade is the same as install (idempotent)
+	return p.Install(cfg, kubecontext, providerType)
+}
+
+// DryRun shows what would be installed.
+func (p *Plugin) DryRun(cfg interface{}, kubecontext string, providerType string) error {
+	dashCfg, ok := cfg.(*template.DashboardTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for dashboard plugin")
+	}
+
+	version := p.chartVersion(dashCfg)
+	fmt.Printf("[dashboard] Would install: %s (chart version: %s)\n", dashCfg.Type, version)
+
+	installed, err := p.IsInstalled(kubecontext)
+	if err != nil {
+		return err
+	}
+	if installed {
+		fmt.Println("  Status: already installed (would upgrade)")
+	} else {
+		fmt.Println("  Status: not installed")
+	}
+	fmt.Printf("  Chart: %s\n", defaultHeadlampChartRef)
+	fmt.Printf("  Repository: %s\n", defaultHeadlampChart)
+	fmt.Printf("  Namespace: %s\n", namespace)
+
+	if dashCfg.Ingress != nil && dashCfg.Ingress.Enabled {
+		fmt.Printf("  Ingress: enabled (host: %s)\n", dashCfg.Ingress.Host)
+	}
+	return nil
 }
 
 func (p *Plugin) chartVersion(cfg *template.DashboardTemplate) string {

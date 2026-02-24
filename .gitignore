@@ -1,2 +1,5 @@
 deploy-cluster
 known_hosts
+*.test
+*.exe
+.DS_Store

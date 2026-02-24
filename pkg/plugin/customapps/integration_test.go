@@ -34,13 +34,11 @@ func quietLogger() *logger.Logger {
 func TestInstall_HelmArgs(t *testing.T) {
 	cmds := setupFakeExec(t)
 	p := New(quietLogger(), 5*time.Minute)
-	app := template.CustomAppTemplate{
-		Name:      "my-app",
-		ChartName: "oci://ghcr.io/my/chart",
-		Version:   "1.0.0",
+	apps := []template.CustomAppTemplate{
+		{Name: "my-app", ChartName: "oci://ghcr.io/my/chart", Version: "1.0.0"},
 	}
 
-	if err := p.Install(app, "kind-test"); err != nil {
+	if err := p.Install(apps, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -68,12 +66,11 @@ func TestInstall_HelmArgs(t *testing.T) {
 func TestInstall_CustomTimeout(t *testing.T) {
 	cmds := setupFakeExec(t)
 	p := New(quietLogger(), 45*time.Second)
-	app := template.CustomAppTemplate{
-		Name:      "my-app",
-		ChartName: "oci://ghcr.io/my/chart",
+	apps := []template.CustomAppTemplate{
+		{Name: "my-app", ChartName: "oci://ghcr.io/my/chart"},
 	}
 
-	if err := p.Install(app, "kind-test"); err != nil {
+	if err := p.Install(apps, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -83,13 +80,11 @@ func TestInstall_CustomTimeout(t *testing.T) {
 func TestInstall_CustomNamespace(t *testing.T) {
 	cmds := setupFakeExec(t)
 	p := New(quietLogger(), 5*time.Minute)
-	app := template.CustomAppTemplate{
-		Name:      "my-app",
-		ChartName: "oci://ghcr.io/my/chart",
-		Namespace: "custom-ns",
+	apps := []template.CustomAppTemplate{
+		{Name: "my-app", ChartName: "oci://ghcr.io/my/chart", Namespace: "custom-ns"},
 	}
 
-	if err := p.Install(app, "kind-test"); err != nil {
+	if err := p.Install(apps, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -123,18 +118,20 @@ func TestInstallAll_MultipleApps(t *testing.T) {
 func TestInstall_WithIngress(t *testing.T) {
 	cmds := setupFakeExec(t)
 	p := New(quietLogger(), 5*time.Minute)
-	app := template.CustomAppTemplate{
-		Name:      "my-app",
-		ChartName: "oci://ghcr.io/my/chart",
-		Ingress: &template.CustomAppIngressTemplate{
-			Enabled:     true,
-			Host:        "my-app.local",
-			ServiceName: "my-svc",
-			ServicePort: 8080,
+	apps := []template.CustomAppTemplate{
+		{
+			Name:      "my-app",
+			ChartName: "oci://ghcr.io/my/chart",
+			Ingress: &template.CustomAppIngressTemplate{
+				Enabled:     true,
+				Host:        "my-app.local",
+				ServiceName: "my-svc",
+				ServicePort: 8080,
+			},
 		},
 	}
 
-	if err := p.Install(app, "kind-test"); err != nil {
+	if err := p.Install(apps, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -154,7 +151,7 @@ func TestIsInstalled_HelmStatus(t *testing.T) {
 	cmds := setupFakeExec(t)
 	p := New(quietLogger(), 5*time.Minute)
 
-	installed, err := p.IsInstalled("my-app", "my-ns", "kind-test")
+	installed, err := p.IsAppInstalled("my-app", "my-ns", "kind-test")
 	if err != nil {
 		t.Fatalf("IsInstalled() error = %v", err)
 	}

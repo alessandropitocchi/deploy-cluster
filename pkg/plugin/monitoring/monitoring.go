@@ -23,37 +23,53 @@ const (
 	namespace           = "monitoring"
 )
 
+// Plugin implements the plugin.Plugin interface for monitoring.
 type Plugin struct {
 	Log     *logger.Logger
 	Timeout time.Duration
 }
 
+// New creates a new monitoring plugin.
 func New(log *logger.Logger, timeout time.Duration) *Plugin {
 	return &Plugin{Log: log, Timeout: timeout}
 }
 
+// Name returns the plugin name.
 func (p *Plugin) Name() string {
 	return "monitoring"
 }
 
-func (p *Plugin) Install(cfg *template.MonitoringTemplate, kubecontext string) error {
-	switch cfg.Type {
+// Install installs the monitoring plugin.
+func (p *Plugin) Install(cfg interface{}, kubecontext string, providerType string) error {
+	monCfg, ok := cfg.(*template.MonitoringTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for monitoring plugin: expected *template.MonitoringTemplate")
+	}
+
+	switch monCfg.Type {
 	case "prometheus":
-		return p.installPrometheus(cfg, kubecontext)
+		return p.installPrometheus(monCfg, kubecontext)
 	default:
-		return fmt.Errorf("unsupported monitoring type: %s (supported: prometheus)", cfg.Type)
+		return fmt.Errorf("unsupported monitoring type: %s (supported: prometheus)", monCfg.Type)
 	}
 }
 
-func (p *Plugin) Uninstall(cfg *template.MonitoringTemplate, kubecontext string) error {
-	switch cfg.Type {
+// Uninstall removes the monitoring plugin.
+func (p *Plugin) Uninstall(cfg interface{}, kubecontext string) error {
+	monCfg, ok := cfg.(*template.MonitoringTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for monitoring plugin")
+	}
+
+	switch monCfg.Type {
 	case "prometheus":
 		return p.uninstallPrometheus(kubecontext)
 	default:
-		return fmt.Errorf("unsupported monitoring type: %s", cfg.Type)
+		return fmt.Errorf("unsupported monitoring type: %s", monCfg.Type)
 	}
 }
 
+// IsInstalled checks if monitoring is installed.
 func (p *Plugin) IsInstalled(kubecontext string) (bool, error) {
 	cmd := execCommand("helm", "status", releaseName,
 		"--namespace", namespace, "--kube-context", kubecontext)
@@ -61,6 +77,40 @@ func (p *Plugin) IsInstalled(kubecontext string) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+// Upgrade re-applies the monitoring configuration (idempotent).
+func (p *Plugin) Upgrade(cfg interface{}, kubecontext string, providerType string) error {
+	// For monitoring, upgrade is the same as install (idempotent)
+	return p.Install(cfg, kubecontext, providerType)
+}
+
+// DryRun shows what would be installed.
+func (p *Plugin) DryRun(cfg interface{}, kubecontext string, providerType string) error {
+	monCfg, ok := cfg.(*template.MonitoringTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for monitoring plugin")
+	}
+
+	version := p.chartVersion(monCfg)
+	fmt.Printf("[monitoring] Would install: %s (chart version: %s)\n", monCfg.Type, version)
+
+	installed, err := p.IsInstalled(kubecontext)
+	if err != nil {
+		return err
+	}
+	if installed {
+		fmt.Println("  Status: already installed (would upgrade)")
+	} else {
+		fmt.Println("  Status: not installed")
+	}
+	fmt.Printf("  Chart: %s\n", defaultChartRef)
+	fmt.Printf("  Namespace: %s\n", namespace)
+
+	if monCfg.Ingress != nil && monCfg.Ingress.Enabled {
+		fmt.Printf("  Ingress: enabled (host: %s)\n", monCfg.Ingress.Host)
+	}
+	return nil
 }
 
 func (p *Plugin) chartVersion(cfg *template.MonitoringTemplate) string {

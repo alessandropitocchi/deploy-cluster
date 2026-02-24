@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 
-	"github.com/alepito/deploy-cluster/pkg/template"
 	"github.com/alepito/deploy-cluster/pkg/logger"
 	"github.com/alepito/deploy-cluster/pkg/plugin/argocd"
 	"github.com/alepito/deploy-cluster/pkg/plugin/certmanager"
@@ -12,6 +11,7 @@ import (
 	"github.com/alepito/deploy-cluster/pkg/plugin/ingress"
 	"github.com/alepito/deploy-cluster/pkg/plugin/monitoring"
 	"github.com/alepito/deploy-cluster/pkg/plugin/storage"
+	"github.com/alepito/deploy-cluster/pkg/template"
 	"github.com/spf13/cobra"
 )
 
@@ -135,7 +135,7 @@ var statusCmd = &cobra.Command{
 			namespace = cfg.Plugins.ArgoCD.Namespace
 		}
 
-		installed, err := argoPlugin.IsInstalled(kubecontext, namespace)
+		installed, err := argoPlugin.IsInstalledInNamespace(kubecontext, namespace)
 		if err != nil {
 			fmt.Printf("\nArgoCD: error checking (%v)\n", err)
 			return nil

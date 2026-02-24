@@ -17,31 +17,101 @@ import (
 // execCommand is a package-level variable for creating exec.Cmd, replaceable in tests.
 var execCommand = exec.Command
 
+// Plugin implements the plugin.Plugin interface for custom apps.
 type Plugin struct {
 	Log     *logger.Logger
 	Timeout time.Duration
 }
 
+// New creates a new custom apps plugin.
 func New(log *logger.Logger, timeout time.Duration) *Plugin {
 	return &Plugin{Log: log, Timeout: timeout}
 }
 
+// Name returns the plugin name.
 func (p *Plugin) Name() string {
-	return "customApps"
+	return "custom-apps"
 }
 
-// InstallAll installs all custom apps from the config.
-func (p *Plugin) InstallAll(apps []template.CustomAppTemplate, kubecontext string) error {
+// Install installs all custom apps from the config.
+func (p *Plugin) Install(cfg interface{}, kubecontext string, providerType string) error {
+	apps, ok := cfg.([]template.CustomAppTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for custom-apps plugin: expected []template.CustomAppTemplate")
+	}
+
 	for _, app := range apps {
-		if err := p.Install(app, kubecontext); err != nil {
+		if err := p.installSingle(app, kubecontext); err != nil {
 			return fmt.Errorf("failed to install custom app %q: %w", app.Name, err)
 		}
 	}
 	return nil
 }
 
-// Install installs a single custom app via Helm.
-func (p *Plugin) Install(app template.CustomAppTemplate, kubecontext string) error {
+// Uninstall removes all custom apps.
+func (p *Plugin) Uninstall(cfg interface{}, kubecontext string) error {
+	apps, ok := cfg.([]template.CustomAppTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for custom-apps plugin")
+	}
+
+	for _, app := range apps {
+		if err := p.uninstallSingle(app.Name, app.Namespace, kubecontext); err != nil {
+			return fmt.Errorf("failed to uninstall custom app %q: %w", app.Name, err)
+		}
+	}
+	return nil
+}
+
+// IsInstalled checks if any custom apps are installed.
+// Returns true if at least one app is installed.
+func (p *Plugin) IsInstalled(kubecontext string) (bool, error) {
+	// List all helm releases across namespaces
+	cmd := execCommand("helm", "list", "-A", "--kube-context", kubecontext, "-q")
+	output, err := cmd.Output()
+	if err != nil {
+		return false, nil
+	}
+	return len(strings.TrimSpace(string(output))) > 0, nil
+}
+
+// Upgrade upgrades all custom apps (idempotent install).
+func (p *Plugin) Upgrade(cfg interface{}, kubecontext string, providerType string) error {
+	// For custom apps, upgrade is the same as install (helm upgrade --install)
+	return p.Install(cfg, kubecontext, providerType)
+}
+
+// DryRun shows what would be installed.
+func (p *Plugin) DryRun(cfg interface{}, kubecontext string, providerType string) error {
+	apps, ok := cfg.([]template.CustomAppTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for custom-apps plugin")
+	}
+
+	fmt.Printf("[custom-apps] Would install %d application(s):\n", len(apps))
+	for _, app := range apps {
+		ns := app.Namespace
+		if ns == "" {
+			ns = app.Name
+		}
+		fmt.Printf("  - %s (chart: %s, namespace: %s)\n", app.Name, app.ChartName, ns)
+		if app.Version != "" {
+			fmt.Printf("    Version: %s\n", app.Version)
+		}
+		if app.Ingress != nil && app.Ingress.Enabled {
+			fmt.Printf("    Ingress: %s\n", app.Ingress.Host)
+		}
+	}
+	return nil
+}
+
+// InstallAll installs all custom apps (backward compatibility).
+func (p *Plugin) InstallAll(apps []template.CustomAppTemplate, kubecontext string) error {
+	return p.Install(apps, kubecontext, "")
+}
+
+// installSingle installs a single custom app via Helm.
+func (p *Plugin) installSingle(app template.CustomAppTemplate, kubecontext string) error {
 	namespace := app.Namespace
 	if namespace == "" {
 		namespace = app.Name
@@ -97,8 +167,8 @@ func (p *Plugin) Install(app template.CustomAppTemplate, kubecontext string) err
 	return nil
 }
 
-// Uninstall removes a single custom app via Helm.
-func (p *Plugin) Uninstall(name, namespace, kubecontext string) error {
+// uninstallSingle removes a single custom app via Helm.
+func (p *Plugin) uninstallSingle(name, namespace, kubecontext string) error {
 	if namespace == "" {
 		namespace = name
 	}
@@ -118,8 +188,8 @@ func (p *Plugin) Uninstall(name, namespace, kubecontext string) error {
 	return nil
 }
 
-// IsInstalled checks if a specific release is installed.
-func (p *Plugin) IsInstalled(name, namespace, kubecontext string) (bool, error) {
+// IsAppInstalled checks if a specific release is installed.
+func (p *Plugin) IsAppInstalled(name, namespace, kubecontext string) (bool, error) {
 	if namespace == "" {
 		namespace = name
 	}
@@ -139,7 +209,7 @@ func (p *Plugin) ListInstalled(apps []template.CustomAppTemplate, kubecontext st
 		if ns == "" {
 			ns = app.Name
 		}
-		ok, err := p.IsInstalled(app.Name, ns, kubecontext)
+		ok, err := p.IsAppInstalled(app.Name, ns, kubecontext)
 		if err != nil {
 			return nil, err
 		}

@@ -35,8 +35,8 @@ func TestNew_CustomTimeout(t *testing.T) {
 
 func TestName(t *testing.T) {
 	p := New(testLogger(), 5*time.Minute)
-	if got := p.Name(); got != "customApps" {
-		t.Errorf("Name() = %q, want %q", got, "customApps")
+	if got := p.Name(); got != "custom-apps" {
+		t.Errorf("Name() = %q, want %q", got, "custom-apps")
 	}
 }
 

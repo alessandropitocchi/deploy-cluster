@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"strings"
+	"time"
 
+	"github.com/alepito/deploy-cluster/pkg/plugin"
 	"github.com/alepito/deploy-cluster/pkg/plugin/argocd"
 	"github.com/alepito/deploy-cluster/pkg/plugin/certmanager"
 	"github.com/alepito/deploy-cluster/pkg/plugin/customapps"
@@ -61,7 +64,7 @@ The cluster itself is NOT destroyed — only the plugins are removed.`,
 		results := uninstallPlugins(cfg, kubecontext, uninstallFailFast)
 
 		if len(results) > 0 {
-			printSummary(results, log)
+			printUninstallSummary(results, log)
 		} else {
 			log.Info("No plugins to uninstall.\n")
 		}
@@ -76,49 +79,38 @@ The cluster itself is NOT destroyed — only the plugins are removed.`,
 }
 
 // uninstallPlugins removes enabled plugins in reverse installation order.
-func uninstallPlugins(cfg *template.Template, kubecontext string, failFast bool) []pluginResult {
-	var results []pluginResult
+func uninstallPlugins(cfg *template.Template, kubecontext string, failFast bool) []plugin.InstallResult {
+	timeout := time.Duration(globalTimeout) * time.Second
 
-	// Reverse order: ArgoCD → customApps → dashboard → monitoring → cert-manager → ingress → storage
+	var results []plugin.InstallResult
+
+	// Reverse order: ArgoCD → custom-apps → dashboard → monitoring → cert-manager → ingress → storage
 
 	if cfg.Plugins.ArgoCD != nil && cfg.Plugins.ArgoCD.Enabled {
 		pluginLog := newLogger("[argocd]")
-		argoPlugin := argocd.New(pluginLog, globalTimeout)
-		namespace := cfg.Plugins.ArgoCD.Namespace
-		if namespace == "" {
-			namespace = "argocd"
-		}
-		err := argoPlugin.Uninstall(kubecontext, namespace)
-		results = append(results, pluginResult{Name: "argocd", Err: err})
+		argoPlugin := argocd.New(pluginLog, timeout)
+		err := argoPlugin.Uninstall(cfg.Plugins.ArgoCD, kubecontext)
+		results = append(results, plugin.InstallResult{Name: "argocd", Err: err})
 		if err != nil && failFast {
 			return results
 		}
 	}
 
 	if len(cfg.Plugins.CustomApps) > 0 {
-		pluginLog := newLogger("[customApps]")
-		customPlugin := customapps.New(pluginLog, globalTimeout)
-		var firstErr error
-		for _, app := range cfg.Plugins.CustomApps {
-			ns := app.Namespace
-			if ns == "" {
-				ns = app.Name
-			}
-			if err := customPlugin.Uninstall(app.Name, ns, kubecontext); err != nil && firstErr == nil {
-				firstErr = err
-			}
-		}
-		results = append(results, pluginResult{Name: "customApps", Err: firstErr})
-		if firstErr != nil && failFast {
+		pluginLog := newLogger("[custom-apps]")
+		customPlugin := customapps.New(pluginLog, timeout)
+		err := customPlugin.Uninstall(cfg.Plugins.CustomApps, kubecontext)
+		results = append(results, plugin.InstallResult{Name: "custom-apps", Err: err})
+		if err != nil && failFast {
 			return results
 		}
 	}
 
 	if cfg.Plugins.Dashboard != nil && cfg.Plugins.Dashboard.Enabled {
 		pluginLog := newLogger("[dashboard]")
-		dashPlugin := dashboard.New(pluginLog, globalTimeout)
+		dashPlugin := dashboard.New(pluginLog, timeout)
 		err := dashPlugin.Uninstall(cfg.Plugins.Dashboard, kubecontext)
-		results = append(results, pluginResult{Name: "dashboard", Err: err})
+		results = append(results, plugin.InstallResult{Name: "dashboard", Err: err})
 		if err != nil && failFast {
 			return results
 		}
@@ -126,9 +118,9 @@ func uninstallPlugins(cfg *template.Template, kubecontext string, failFast bool)
 
 	if cfg.Plugins.Monitoring != nil && cfg.Plugins.Monitoring.Enabled {
 		pluginLog := newLogger("[monitoring]")
-		monPlugin := monitoring.New(pluginLog, globalTimeout)
+		monPlugin := monitoring.New(pluginLog, timeout)
 		err := monPlugin.Uninstall(cfg.Plugins.Monitoring, kubecontext)
-		results = append(results, pluginResult{Name: "monitoring", Err: err})
+		results = append(results, plugin.InstallResult{Name: "monitoring", Err: err})
 		if err != nil && failFast {
 			return results
 		}
@@ -136,9 +128,9 @@ func uninstallPlugins(cfg *template.Template, kubecontext string, failFast bool)
 
 	if cfg.Plugins.CertManager != nil && cfg.Plugins.CertManager.Enabled {
 		pluginLog := newLogger("[cert-manager]")
-		cmPlugin := certmanager.New(pluginLog, globalTimeout)
+		cmPlugin := certmanager.New(pluginLog, timeout)
 		err := cmPlugin.Uninstall(cfg.Plugins.CertManager, kubecontext)
-		results = append(results, pluginResult{Name: "cert-manager", Err: err})
+		results = append(results, plugin.InstallResult{Name: "cert-manager", Err: err})
 		if err != nil && failFast {
 			return results
 		}
@@ -146,9 +138,9 @@ func uninstallPlugins(cfg *template.Template, kubecontext string, failFast bool)
 
 	if cfg.Plugins.Ingress != nil && cfg.Plugins.Ingress.Enabled {
 		pluginLog := newLogger("[ingress]")
-		ingressPlugin := ingress.New(pluginLog, globalTimeout)
+		ingressPlugin := ingress.New(pluginLog, timeout)
 		err := ingressPlugin.Uninstall(cfg.Plugins.Ingress, kubecontext)
-		results = append(results, pluginResult{Name: "ingress", Err: err})
+		results = append(results, plugin.InstallResult{Name: "ingress", Err: err})
 		if err != nil && failFast {
 			return results
 		}
@@ -156,12 +148,41 @@ func uninstallPlugins(cfg *template.Template, kubecontext string, failFast bool)
 
 	if cfg.Plugins.Storage != nil && cfg.Plugins.Storage.Enabled {
 		pluginLog := newLogger("[storage]")
-		storagePlugin := storage.New(pluginLog, globalTimeout)
+		storagePlugin := storage.New(pluginLog, timeout)
 		err := storagePlugin.Uninstall(cfg.Plugins.Storage, kubecontext)
-		results = append(results, pluginResult{Name: "storage", Err: err})
+		results = append(results, plugin.InstallResult{Name: "storage", Err: err})
 	}
 
 	return results
+}
+
+// printUninstallSummary prints a summary of plugin uninstallation results.
+func printUninstallSummary(results []plugin.InstallResult, log interface {
+	Info(string, ...any)
+	Success(string, ...any)
+	Error(string, ...any)
+}) {
+	fmt.Println()
+	fmt.Println(strings.Repeat("-", 40))
+	fmt.Println("Plugin Uninstallation Summary:")
+	fmt.Println(strings.Repeat("-", 40))
+
+	successful := 0
+	failed := 0
+
+	for _, r := range results {
+		if r.Err != nil {
+			fmt.Printf("  ✗ %s: %v\n", r.Name, r.Err)
+			failed++
+		} else {
+			fmt.Printf("  ✓ %s\n", r.Name)
+			successful++
+		}
+	}
+
+	fmt.Println(strings.Repeat("-", 40))
+	fmt.Printf("Total: %d | Successful: %d | Failed: %d\n", len(results), successful, failed)
+	fmt.Println(strings.Repeat("-", 40))
 }
 
 func init() {

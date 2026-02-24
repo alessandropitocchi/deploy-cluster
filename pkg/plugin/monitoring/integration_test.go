@@ -36,7 +36,7 @@ func TestInstallPrometheus_HelmArgs(t *testing.T) {
 	p := New(quietLogger(), 5*time.Minute)
 	cfg := &template.MonitoringTemplate{Enabled: true, Type: "prometheus"}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -66,7 +66,7 @@ func TestInstallPrometheus_CustomTimeout(t *testing.T) {
 	p := New(quietLogger(), 10*time.Minute)
 	cfg := &template.MonitoringTemplate{Enabled: true, Type: "prometheus"}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -78,7 +78,7 @@ func TestInstallPrometheus_CustomVersion(t *testing.T) {
 	p := New(quietLogger(), 5*time.Minute)
 	cfg := &template.MonitoringTemplate{Enabled: true, Type: "prometheus", Version: "70.0.0"}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -97,7 +97,7 @@ func TestInstallPrometheus_WithIngress(t *testing.T) {
 		},
 	}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 

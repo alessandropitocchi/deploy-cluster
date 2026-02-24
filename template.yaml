@@ -32,7 +32,7 @@ plugins:
         namespace: argocd
         version: stable
         ingress:
-            enabled: true
+            enabled: false
             host: argocd.localhost
         repos:
         - name: app-repo

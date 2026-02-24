@@ -4,12 +4,13 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/alepito/deploy-cluster/pkg/plugin"
 	"github.com/alepito/deploy-cluster/pkg/template"
 )
 
 func TestInstallPlugins_AllDisabled(t *testing.T) {
 	cfg := &template.Template{
-		Name: "test",
+		Name:     "test",
 		Provider: template.ProviderTemplate{Type: "kind"},
 	}
 
@@ -21,7 +22,7 @@ func TestInstallPlugins_AllDisabled(t *testing.T) {
 
 func TestUpgradePlugins_AllDisabled(t *testing.T) {
 	cfg := &template.Template{
-		Name: "test",
+		Name:     "test",
 		Provider: template.ProviderTemplate{Type: "kind"},
 	}
 
@@ -35,13 +36,13 @@ func TestHasErrors_Empty(t *testing.T) {
 	if hasErrors(nil) {
 		t.Error("hasErrors(nil) should be false")
 	}
-	if hasErrors([]pluginResult{}) {
+	if hasErrors([]plugin.InstallResult{}) {
 		t.Error("hasErrors([]) should be false")
 	}
 }
 
 func TestHasErrors_NoErrors(t *testing.T) {
-	results := []pluginResult{
+	results := []plugin.InstallResult{
 		{Name: "storage", Err: nil},
 		{Name: "ingress", Err: nil},
 	}
@@ -51,7 +52,7 @@ func TestHasErrors_NoErrors(t *testing.T) {
 }
 
 func TestHasErrors_WithError(t *testing.T) {
-	results := []pluginResult{
+	results := []plugin.InstallResult{
 		{Name: "storage", Err: nil},
 		{Name: "ingress", Err: errors.New("failed")},
 	}
@@ -60,14 +61,14 @@ func TestHasErrors_WithError(t *testing.T) {
 	}
 }
 
-func TestPrintSummary_NoPanic(t *testing.T) {
+func TestPrintPluginSummary_NoPanic(t *testing.T) {
 	log := newLogger("")
 
 	// Should not panic with empty results
-	printSummary([]pluginResult{}, log)
+	printPluginSummary([]plugin.InstallResult{}, log)
 
 	// Should not panic with mixed results
-	printSummary([]pluginResult{
+	printPluginSummary([]plugin.InstallResult{
 		{Name: "storage", Err: nil},
 		{Name: "ingress", Err: errors.New("timeout")},
 	}, log)

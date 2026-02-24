@@ -3,7 +3,10 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/alepito/deploy-cluster/pkg/logger"
+	"github.com/alepito/deploy-cluster/pkg/plugin"
 	"github.com/alepito/deploy-cluster/pkg/plugin/argocd"
 	"github.com/alepito/deploy-cluster/pkg/plugin/certmanager"
 	"github.com/alepito/deploy-cluster/pkg/plugin/customapps"
@@ -14,268 +17,160 @@ import (
 	"github.com/alepito/deploy-cluster/pkg/template"
 )
 
-// pluginResult tracks the outcome of a plugin installation.
-type pluginResult struct {
-	Name string
-	Err  error
+// createRegistry creates and configures the plugin registry with all available plugins.
+func createRegistry(log *logger.Logger, timeout time.Duration) *plugin.Registry {
+	registry := plugin.NewRegistry()
+
+	registry.Register(storage.New(log.WithPrefix("[storage]"), timeout))
+	registry.Register(ingress.New(log.WithPrefix("[ingress]"), timeout))
+	registry.Register(certmanager.New(log.WithPrefix("[cert-manager]"), timeout))
+	registry.Register(monitoring.New(log.WithPrefix("[monitoring]"), timeout))
+	registry.Register(dashboard.New(log.WithPrefix("[dashboard]"), timeout))
+	registry.Register(customapps.New(log.WithPrefix("[custom-apps]"), timeout))
+	registry.Register(argocd.New(log.WithPrefix("[argocd]"), timeout))
+
+	return registry
 }
 
-// installPlugins runs all enabled plugins in order (for create).
-func installPlugins(cfg *template.Template, kubecontext string, failFast bool) []pluginResult {
+// installPlugins installs all enabled plugins using the unified plugin system.
+func installPlugins(cfg *template.Template, kubecontext string, failFast bool) []plugin.InstallResult {
 	log := newLogger("")
-	var results []pluginResult
+	timeout := time.Duration(globalTimeout) * time.Second
 
-	if cfg.Plugins.Storage != nil && cfg.Plugins.Storage.Enabled {
-		log.Info("\n")
-		pluginLog := newLogger("[storage]")
-		storagePlugin := storage.New(pluginLog, globalTimeout)
-		err := storagePlugin.Install(cfg.Plugins.Storage, kubecontext)
-		results = append(results, pluginResult{Name: "storage", Err: err})
-		if err != nil && failFast {
-			return results
-		}
+	// Create registry and manager
+	registry := createRegistry(log, timeout)
+	manager := plugin.NewManager(registry, log,
+		plugin.WithFailFast(failFast),
+	)
+
+	// Get enabled plugins from template
+	enabledPlugins := plugin.GetEnabledPlugins(cfg)
+
+	// Install options
+	opts := plugin.InstallConfig{
+		Kubecontext:  kubecontext,
+		ProviderType: cfg.Provider.Type,
 	}
 
-	if cfg.Plugins.Ingress != nil && cfg.Plugins.Ingress.Enabled {
-		log.Info("\n")
-		pluginLog := newLogger("[ingress]")
-		ingressPlugin := ingress.New(pluginLog, globalTimeout)
-		err := ingressPlugin.Install(cfg.Plugins.Ingress, kubecontext, cfg.Provider.Type)
-		results = append(results, pluginResult{Name: "ingress", Err: err})
-		if err != nil && failFast {
-			return results
-		}
-	}
+	// Install all plugins
+	results := manager.InstallAll(enabledPlugins, opts)
 
-	if cfg.Plugins.CertManager != nil && cfg.Plugins.CertManager.Enabled {
-		log.Info("\n")
-		pluginLog := newLogger("[cert-manager]")
-		cmPlugin := certmanager.New(pluginLog, globalTimeout)
-		err := cmPlugin.Install(cfg.Plugins.CertManager, kubecontext)
-		results = append(results, pluginResult{Name: "cert-manager", Err: err})
-		if err != nil && failFast {
-			return results
-		}
-	}
-
-	if cfg.Plugins.Monitoring != nil && cfg.Plugins.Monitoring.Enabled {
-		log.Info("\n")
-		pluginLog := newLogger("[monitoring]")
-		monPlugin := monitoring.New(pluginLog, globalTimeout)
-		err := monPlugin.Install(cfg.Plugins.Monitoring, kubecontext)
-		results = append(results, pluginResult{Name: "monitoring", Err: err})
-		if err != nil && failFast {
-			return results
-		}
-	}
-
-	if cfg.Plugins.Dashboard != nil && cfg.Plugins.Dashboard.Enabled {
-		log.Info("\n")
-		pluginLog := newLogger("[dashboard]")
-		dashPlugin := dashboard.New(pluginLog, globalTimeout)
-		err := dashPlugin.Install(cfg.Plugins.Dashboard, kubecontext)
-		results = append(results, pluginResult{Name: "dashboard", Err: err})
-		if err != nil && failFast {
-			return results
-		}
-	}
-
-	if len(cfg.Plugins.CustomApps) > 0 {
-		log.Info("\n")
-		pluginLog := newLogger("[customApps]")
-		customPlugin := customapps.New(pluginLog, globalTimeout)
-		err := customPlugin.InstallAll(cfg.Plugins.CustomApps, kubecontext)
-		results = append(results, pluginResult{Name: "customApps", Err: err})
-		if err != nil && failFast {
-			return results
-		}
-	}
-
-	if cfg.Plugins.ArgoCD != nil && cfg.Plugins.ArgoCD.Enabled {
-		log.Info("\n")
-		pluginLog := newLogger("[argocd]")
-		argoPlugin := argocd.New(pluginLog, globalTimeout)
-		err := argoPlugin.Install(cfg.Plugins.ArgoCD, kubecontext)
-		results = append(results, pluginResult{Name: "argocd", Err: err})
+	// Print summary
+	if len(results) > 0 {
+		printPluginSummary(results, log)
 	}
 
 	return results
 }
 
-// upgradePlugins runs all enabled plugins in order (for upgrade).
-// Checks IsInstalled first and logs accordingly.
-// Uses argoPlugin.Upgrade() when ArgoCD is already installed.
-func upgradePlugins(cfg *template.Template, kubecontext string, failFast bool) []pluginResult {
+// upgradePlugins upgrades all enabled plugins using the unified plugin system.
+func upgradePlugins(cfg *template.Template, kubecontext string, failFast bool) []plugin.InstallResult {
 	log := newLogger("")
-	var results []pluginResult
+	timeout := time.Duration(globalTimeout) * time.Second
 
-	if cfg.Plugins.Storage != nil && cfg.Plugins.Storage.Enabled {
-		pluginLog := newLogger("[storage]")
-		storagePlugin := storage.New(pluginLog, globalTimeout)
-		installed, checkErr := storagePlugin.IsInstalled(kubecontext)
-		if checkErr != nil {
-			results = append(results, pluginResult{Name: "storage", Err: fmt.Errorf("failed to check status: %w", checkErr)})
-		} else {
-			if !installed {
-				pluginLog.Info("Storage not installed, performing installation...\n")
-			} else {
-				pluginLog.Info("Storage already installed, re-applying...\n")
-			}
-			err := storagePlugin.Install(cfg.Plugins.Storage, kubecontext)
-			results = append(results, pluginResult{Name: "storage", Err: err})
-		}
-		if hasErrors(results) && failFast {
-			return results
-		}
+	// Create registry and manager
+	registry := createRegistry(log, timeout)
+	manager := plugin.NewManager(registry, log,
+		plugin.WithFailFast(failFast),
+	)
+
+	// Get enabled plugins from template
+	enabledPlugins := plugin.GetEnabledPlugins(cfg)
+
+	// Upgrade options
+	opts := plugin.InstallConfig{
+		Kubecontext:  kubecontext,
+		ProviderType: cfg.Provider.Type,
 	}
 
-	if cfg.Plugins.Ingress != nil && cfg.Plugins.Ingress.Enabled {
-		pluginLog := newLogger("[ingress]")
-		ingressPlugin := ingress.New(pluginLog, globalTimeout)
-		installed, checkErr := ingressPlugin.IsInstalled(kubecontext)
-		if checkErr != nil {
-			results = append(results, pluginResult{Name: "ingress", Err: fmt.Errorf("failed to check status: %w", checkErr)})
-		} else {
-			if !installed {
-				pluginLog.Info("Ingress not installed, performing installation...\n")
-			} else {
-				pluginLog.Info("Ingress already installed, re-applying...\n")
-			}
-			err := ingressPlugin.Install(cfg.Plugins.Ingress, kubecontext, cfg.Provider.Type)
-			results = append(results, pluginResult{Name: "ingress", Err: err})
-		}
-		if hasErrors(results) && failFast {
-			return results
-		}
+	// Upgrade all plugins
+	results := manager.UpgradeAll(enabledPlugins, opts)
+
+	// Check for disabled but installed ArgoCD
+	if cfg.Plugins.ArgoCD != nil && !cfg.Plugins.ArgoCD.Enabled {
+		checkDisabledArgoCD(cfg, kubecontext, log)
 	}
 
-	if cfg.Plugins.CertManager != nil && cfg.Plugins.CertManager.Enabled {
-		pluginLog := newLogger("[cert-manager]")
-		cmPlugin := certmanager.New(pluginLog, globalTimeout)
-		installed, checkErr := cmPlugin.IsInstalled(kubecontext)
-		if checkErr != nil {
-			results = append(results, pluginResult{Name: "cert-manager", Err: fmt.Errorf("failed to check status: %w", checkErr)})
-		} else {
-			if !installed {
-				pluginLog.Info("Not installed, performing installation...\n")
-			} else {
-				pluginLog.Info("Already installed, re-applying...\n")
-			}
-			err := cmPlugin.Install(cfg.Plugins.CertManager, kubecontext)
-			results = append(results, pluginResult{Name: "cert-manager", Err: err})
-		}
-		if hasErrors(results) && failFast {
-			return results
-		}
-	}
-
-	if cfg.Plugins.Monitoring != nil && cfg.Plugins.Monitoring.Enabled {
-		pluginLog := newLogger("[monitoring]")
-		monPlugin := monitoring.New(pluginLog, globalTimeout)
-		installed, checkErr := monPlugin.IsInstalled(kubecontext)
-		if checkErr != nil {
-			results = append(results, pluginResult{Name: "monitoring", Err: fmt.Errorf("failed to check status: %w", checkErr)})
-		} else {
-			if !installed {
-				pluginLog.Info("Not installed, performing installation...\n")
-			} else {
-				pluginLog.Info("Already installed, re-applying...\n")
-			}
-			err := monPlugin.Install(cfg.Plugins.Monitoring, kubecontext)
-			results = append(results, pluginResult{Name: "monitoring", Err: err})
-		}
-		if hasErrors(results) && failFast {
-			return results
-		}
-	}
-
-	if cfg.Plugins.Dashboard != nil && cfg.Plugins.Dashboard.Enabled {
-		pluginLog := newLogger("[dashboard]")
-		dashPlugin := dashboard.New(pluginLog, globalTimeout)
-		installed, checkErr := dashPlugin.IsInstalled(kubecontext)
-		if checkErr != nil {
-			results = append(results, pluginResult{Name: "dashboard", Err: fmt.Errorf("failed to check status: %w", checkErr)})
-		} else {
-			if !installed {
-				pluginLog.Info("Dashboard not installed, performing installation...\n")
-			} else {
-				pluginLog.Info("Dashboard already installed, re-applying...\n")
-			}
-			err := dashPlugin.Install(cfg.Plugins.Dashboard, kubecontext)
-			results = append(results, pluginResult{Name: "dashboard", Err: err})
-		}
-		if hasErrors(results) && failFast {
-			return results
-		}
-	}
-
-	if len(cfg.Plugins.CustomApps) > 0 {
-		pluginLog := newLogger("[customApps]")
-		pluginLog.Info("Upgrading custom apps...\n")
-		customPlugin := customapps.New(pluginLog, globalTimeout)
-		err := customPlugin.InstallAll(cfg.Plugins.CustomApps, kubecontext)
-		results = append(results, pluginResult{Name: "customApps", Err: err})
-		if err != nil && failFast {
-			return results
-		}
-	}
-
-	if cfg.Plugins.ArgoCD != nil && cfg.Plugins.ArgoCD.Enabled {
-		pluginLog := newLogger("[argocd]")
-		argoPlugin := argocd.New(pluginLog, globalTimeout)
-
-		namespace := cfg.Plugins.ArgoCD.Namespace
-		if namespace == "" {
-			namespace = "argocd"
-		}
-
-		installed, checkErr := argoPlugin.IsInstalled(kubecontext, namespace)
-		if checkErr != nil {
-			results = append(results, pluginResult{Name: "argocd", Err: fmt.Errorf("failed to check status: %w", checkErr)})
-		} else if !installed {
-			pluginLog.Info("ArgoCD not installed, performing full installation...\n")
-			err := argoPlugin.Install(cfg.Plugins.ArgoCD, kubecontext)
-			results = append(results, pluginResult{Name: "argocd", Err: err})
-		} else {
-			err := argoPlugin.Upgrade(cfg.Plugins.ArgoCD, kubecontext)
-			results = append(results, pluginResult{Name: "argocd", Err: err})
-		}
-		if hasErrors(results) && failFast {
-			return results
-		}
-	} else if cfg.Plugins.ArgoCD != nil && !cfg.Plugins.ArgoCD.Enabled {
-		pluginLog := newLogger("[argocd]")
-		argoPlugin := argocd.New(pluginLog, globalTimeout)
-		namespace := cfg.Plugins.ArgoCD.Namespace
-		if namespace == "" {
-			namespace = "argocd"
-		}
-		installed, err := argoPlugin.IsInstalled(kubecontext, namespace)
-		if err == nil && installed {
-			log.Warn("[argocd] WARNING: ArgoCD is installed but disabled in template. It will NOT be automatically uninstalled.\n")
-			log.Warn("[argocd] To uninstall manually: kubectl delete namespace %s --context %s\n", namespace, kubecontext)
-		}
+	// Print summary
+	if len(results) > 0 {
+		printPluginSummary(results, log)
 	}
 
 	return results
 }
 
-func printSummary(results []pluginResult, log interface{ Info(string, ...any) }) {
+// dryRunPlugins performs a dry run of all enabled plugins.
+func dryRunPlugins(cfg *template.Template, kubecontext string) []plugin.InstallResult {
+	log := newLogger("")
+	timeout := time.Duration(globalTimeout) * time.Second
+
+	// Create registry and manager
+	registry := createRegistry(log, timeout)
+	manager := plugin.NewManager(registry, log)
+
+	// Get enabled plugins from template
+	enabledPlugins := plugin.GetEnabledPlugins(cfg)
+
+	// Dry run options
+	opts := plugin.InstallConfig{
+		Kubecontext:  kubecontext,
+		ProviderType: cfg.Provider.Type,
+	}
+
+	// Dry run all plugins
+	return manager.DryRun(enabledPlugins, opts)
+}
+
+// checkDisabledArgoCD warns if ArgoCD is installed but disabled in template.
+func checkDisabledArgoCD(cfg *template.Template, kubecontext string, log *logger.Logger) {
+	argoPlugin := argocd.New(log, time.Duration(globalTimeout)*time.Second)
+	namespace := cfg.Plugins.ArgoCD.Namespace
+	if namespace == "" {
+		namespace = "argocd"
+	}
+	installed, err := argoPlugin.IsInstalledInNamespace(kubecontext, namespace)
+	if err == nil && installed {
+		log.Warn("[argocd] WARNING: ArgoCD is installed but disabled in template. It will NOT be automatically uninstalled.\n")
+		log.Warn("[argocd] To uninstall manually: kubectl delete namespace %s --context %s\n", namespace, kubecontext)
+	}
+}
+
+// printPluginSummary prints a summary of plugin installation results.
+func printPluginSummary(results []plugin.InstallResult, log interface {
+	Info(string, ...any)
+	Success(string, ...any)
+	Error(string, ...any)
+}) {
 	fmt.Println()
 	fmt.Println(strings.Repeat("-", 40))
 	fmt.Println("Plugin Installation Summary:")
 	fmt.Println(strings.Repeat("-", 40))
+
+	successful := 0
+	skipped := 0
+	failed := 0
+
 	for _, r := range results {
-		if r.Err == nil {
-			fmt.Printf("  ✓ %s\n", r.Name)
-		} else {
+		if r.Err != nil {
 			fmt.Printf("  ✗ %s: %v\n", r.Name, r.Err)
+			failed++
+		} else if r.Skipped {
+			fmt.Printf("  ⊘ %s (skipped - already installed)\n", r.Name)
+			skipped++
+		} else {
+			fmt.Printf("  ✓ %s\n", r.Name)
+			successful++
 		}
 	}
+
+	fmt.Println(strings.Repeat("-", 40))
+	fmt.Printf("Total: %d | Successful: %d | Skipped: %d | Failed: %d\n",
+		len(results), successful, skipped, failed)
 	fmt.Println(strings.Repeat("-", 40))
 }
 
-func hasErrors(results []pluginResult) bool {
+// hasErrors checks if any result has an error.
+func hasErrors(results []plugin.InstallResult) bool {
 	for _, r := range results {
 		if r.Err != nil {
 			return true

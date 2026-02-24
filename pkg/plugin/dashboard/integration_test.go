@@ -36,7 +36,7 @@ func TestInstallHeadlamp_HelmArgs(t *testing.T) {
 	p := New(quietLogger(), 5*time.Minute)
 	cfg := &template.DashboardTemplate{Enabled: true, Type: "headlamp"}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -65,7 +65,7 @@ func TestInstallHeadlamp_CustomTimeout(t *testing.T) {
 	p := New(quietLogger(), 3*time.Minute)
 	cfg := &template.DashboardTemplate{Enabled: true, Type: "headlamp"}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -85,7 +85,7 @@ func TestInstallHeadlamp_WithIngress(t *testing.T) {
 		},
 	}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 

@@ -36,7 +36,7 @@ func TestInstallLocalPath_Commands(t *testing.T) {
 	p := New(quietLogger(), 5*time.Minute)
 	cfg := &template.StorageTemplate{Enabled: true, Type: "local-path"}
 
-	err := p.Install(cfg, "kind-test")
+	err := p.Install(cfg, "kind-test", "kind")
 	if err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
@@ -70,7 +70,7 @@ func TestInstallLocalPath_CustomTimeout(t *testing.T) {
 	p := New(quietLogger(), 30*time.Second)
 	cfg := &template.StorageTemplate{Enabled: true, Type: "local-path"}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -89,7 +89,7 @@ func TestInstallLocalPath_Kubecontext(t *testing.T) {
 	p := New(quietLogger(), 5*time.Minute)
 	cfg := &template.StorageTemplate{Enabled: true, Type: "local-path"}
 
-	if err := p.Install(cfg, "kind-my-cluster"); err != nil {
+	if err := p.Install(cfg, "kind-my-cluster", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 

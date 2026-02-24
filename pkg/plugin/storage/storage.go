@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alepito/deploy-cluster/pkg/template"
 	"github.com/alepito/deploy-cluster/pkg/logger"
 	"github.com/alepito/deploy-cluster/pkg/retry"
+	"github.com/alepito/deploy-cluster/pkg/template"
 )
 
 // execCommand is a package-level variable for creating exec.Cmd, replaceable in tests.
@@ -19,37 +19,53 @@ const (
 	localPathProvisionerURL = "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.30/deploy/local-path-storage.yaml"
 )
 
+// Plugin implements the plugin.Plugin interface for storage.
 type Plugin struct {
 	Log     *logger.Logger
 	Timeout time.Duration
 }
 
+// New creates a new storage plugin.
 func New(log *logger.Logger, timeout time.Duration) *Plugin {
 	return &Plugin{Log: log, Timeout: timeout}
 }
 
+// Name returns the plugin name.
 func (p *Plugin) Name() string {
 	return "storage"
 }
 
-func (p *Plugin) Install(cfg *template.StorageTemplate, kubecontext string) error {
-	switch cfg.Type {
+// Install installs the storage plugin.
+func (p *Plugin) Install(cfg interface{}, kubecontext string, providerType string) error {
+	storageCfg, ok := cfg.(*template.StorageTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for storage plugin: expected *template.StorageTemplate")
+	}
+
+	switch storageCfg.Type {
 	case "local-path":
 		return p.installLocalPath(kubecontext)
 	default:
-		return fmt.Errorf("unsupported storage type: %s (supported: local-path)", cfg.Type)
+		return fmt.Errorf("unsupported storage type: %s (supported: local-path)", storageCfg.Type)
 	}
 }
 
-func (p *Plugin) Uninstall(cfg *template.StorageTemplate, kubecontext string) error {
-	switch cfg.Type {
+// Uninstall removes the storage plugin.
+func (p *Plugin) Uninstall(cfg interface{}, kubecontext string) error {
+	storageCfg, ok := cfg.(*template.StorageTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for storage plugin")
+	}
+
+	switch storageCfg.Type {
 	case "local-path":
 		return p.uninstallLocalPath(kubecontext)
 	default:
-		return fmt.Errorf("unsupported storage type: %s", cfg.Type)
+		return fmt.Errorf("unsupported storage type: %s", storageCfg.Type)
 	}
 }
 
+// IsInstalled checks if the storage plugin is installed.
 func (p *Plugin) IsInstalled(kubecontext string) (bool, error) {
 	cmd := execCommand("kubectl", "--context", kubecontext,
 		"get", "deployment", "local-path-provisioner", "-n", "local-path-storage")
@@ -57,6 +73,34 @@ func (p *Plugin) IsInstalled(kubecontext string) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+// Upgrade re-applies the storage configuration (idempotent).
+func (p *Plugin) Upgrade(cfg interface{}, kubecontext string, providerType string) error {
+	// For storage, upgrade is the same as install (idempotent)
+	return p.Install(cfg, kubecontext, providerType)
+}
+
+// DryRun shows what would be installed.
+func (p *Plugin) DryRun(cfg interface{}, kubecontext string, providerType string) error {
+	storageCfg, ok := cfg.(*template.StorageTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for storage plugin")
+	}
+
+	fmt.Printf("[storage] Would install: %s\n", storageCfg.Type)
+	
+	installed, err := p.IsInstalled(kubecontext)
+	if err != nil {
+		return err
+	}
+	if installed {
+		fmt.Println("  Status: already installed (would skip)")
+	} else {
+		fmt.Println("  Status: not installed")
+		fmt.Printf("  Manifest: %s\n", localPathProvisionerURL)
+	}
+	return nil
 }
 
 func (p *Plugin) installLocalPath(kubecontext string) error {

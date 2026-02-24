@@ -40,7 +40,7 @@ func TestInstall_FullFlow(t *testing.T) {
 		Version:   "stable",
 	}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -80,7 +80,7 @@ func TestInstall_CustomTimeout(t *testing.T) {
 		Version:   "stable",
 	}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -102,7 +102,7 @@ func TestInstall_CustomNamespace(t *testing.T) {
 		Version:   "stable",
 	}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -123,7 +123,7 @@ func TestInstall_WithIngress(t *testing.T) {
 		},
 	}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -158,7 +158,7 @@ func TestInstall_WithRepos(t *testing.T) {
 		},
 	}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -192,7 +192,7 @@ func TestInstall_WithApps(t *testing.T) {
 		},
 	}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -213,7 +213,7 @@ func TestIsInstalled_Commands(t *testing.T) {
 	cmds := setupFakeExec(t)
 	p := New(quietLog(), 5*time.Minute)
 
-	installed, err := p.IsInstalled("kind-test", "argocd")
+	installed, err := p.IsInstalledInNamespace("kind-test", "argocd")
 	if err != nil {
 		t.Fatalf("IsInstalled() error = %v", err)
 	}
@@ -231,7 +231,7 @@ func TestIsInstalled_CustomNamespace(t *testing.T) {
 	cmds := setupFakeExec(t)
 	p := New(quietLog(), 5*time.Minute)
 
-	_, _ = p.IsInstalled("kind-test", "gitops")
+	_, _ = p.IsInstalledInNamespace("kind-test", "gitops")
 
 	assertContains(t, (*cmds)[0].args, "gitops", "should use custom namespace")
 }
@@ -262,7 +262,7 @@ func TestUpgrade_Flow(t *testing.T) {
 		Version:   "stable",
 	}
 
-	if err := p.Upgrade(cfg, "kind-test"); err != nil {
+	if err := p.Upgrade(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Upgrade() error = %v", err)
 	}
 

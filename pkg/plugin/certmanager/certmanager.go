@@ -6,9 +6,9 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/alepito/deploy-cluster/pkg/template"
 	"github.com/alepito/deploy-cluster/pkg/logger"
 	"github.com/alepito/deploy-cluster/pkg/retry"
+	"github.com/alepito/deploy-cluster/pkg/template"
 )
 
 // execCommand is a package-level variable for creating exec.Cmd, replaceable in tests.
@@ -16,25 +16,30 @@ var execCommand = exec.Command
 
 const defaultVersion = "v1.16.3"
 
+// Plugin implements the plugin.Plugin interface for cert-manager.
 type Plugin struct {
 	Log     *logger.Logger
 	Timeout time.Duration
 }
 
+// New creates a new cert-manager plugin.
 func New(log *logger.Logger, timeout time.Duration) *Plugin {
 	return &Plugin{Log: log, Timeout: timeout}
 }
 
+// Name returns the plugin name.
 func (p *Plugin) Name() string {
 	return "cert-manager"
 }
 
-func (p *Plugin) manifestURL(version string) string {
-	return fmt.Sprintf("https://github.com/cert-manager/cert-manager/releases/download/%s/cert-manager.yaml", version)
-}
+// Install installs the cert-manager plugin.
+func (p *Plugin) Install(cfg interface{}, kubecontext string, providerType string) error {
+	certCfg, ok := cfg.(*template.CertManagerTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for cert-manager plugin: expected *template.CertManagerTemplate")
+	}
 
-func (p *Plugin) Install(cfg *template.CertManagerTemplate, kubecontext string) error {
-	version := cfg.Version
+	version := certCfg.Version
 	if version == "" {
 		version = defaultVersion
 	}
@@ -79,8 +84,14 @@ func (p *Plugin) Install(cfg *template.CertManagerTemplate, kubecontext string) 
 	return nil
 }
 
-func (p *Plugin) Uninstall(cfg *template.CertManagerTemplate, kubecontext string) error {
-	version := cfg.Version
+// Uninstall removes the cert-manager plugin.
+func (p *Plugin) Uninstall(cfg interface{}, kubecontext string) error {
+	certCfg, ok := cfg.(*template.CertManagerTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for cert-manager plugin")
+	}
+
+	version := certCfg.Version
 	if version == "" {
 		version = defaultVersion
 	}
@@ -99,6 +110,7 @@ func (p *Plugin) Uninstall(cfg *template.CertManagerTemplate, kubecontext string
 	return nil
 }
 
+// IsInstalled checks if cert-manager is installed.
 func (p *Plugin) IsInstalled(kubecontext string) (bool, error) {
 	cmd := execCommand("kubectl", "--context", kubecontext,
 		"get", "deployment", "cert-manager", "-n", "cert-manager")
@@ -106,4 +118,41 @@ func (p *Plugin) IsInstalled(kubecontext string) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+// Upgrade re-applies the cert-manager configuration (idempotent).
+func (p *Plugin) Upgrade(cfg interface{}, kubecontext string, providerType string) error {
+	// For cert-manager, upgrade is the same as install (idempotent)
+	return p.Install(cfg, kubecontext, providerType)
+}
+
+// DryRun shows what would be installed.
+func (p *Plugin) DryRun(cfg interface{}, kubecontext string, providerType string) error {
+	certCfg, ok := cfg.(*template.CertManagerTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for cert-manager plugin")
+	}
+
+	version := certCfg.Version
+	if version == "" {
+		version = defaultVersion
+	}
+
+	fmt.Printf("[cert-manager] Would install version: %s\n", version)
+
+	installed, err := p.IsInstalled(kubecontext)
+	if err != nil {
+		return err
+	}
+	if installed {
+		fmt.Println("  Status: already installed (would re-apply)")
+	} else {
+		fmt.Println("  Status: not installed")
+	}
+	fmt.Printf("  Manifest: %s\n", p.manifestURL(version))
+	return nil
+}
+
+func (p *Plugin) manifestURL(version string) string {
+	return fmt.Sprintf("https://github.com/cert-manager/cert-manager/releases/download/%s/cert-manager.yaml", version)
 }

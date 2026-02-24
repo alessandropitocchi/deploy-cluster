@@ -44,27 +44,36 @@ stringData:
 {{- end }}
 `
 
+// Plugin implements the plugin.Plugin interface for ArgoCD.
 type Plugin struct {
 	Log     *logger.Logger
 	Timeout time.Duration
 }
 
+// New creates a new ArgoCD plugin.
 func New(log *logger.Logger, timeout time.Duration) *Plugin {
 	return &Plugin{Log: log, Timeout: timeout}
 }
 
+// Name returns the plugin name.
 func (p *Plugin) Name() string {
 	return "argocd"
 }
 
-func (p *Plugin) Install(cfg *template.ArgoCDTemplate, kubecontext string) error {
+// Install installs the ArgoCD plugin.
+func (p *Plugin) Install(cfg interface{}, kubecontext string, providerType string) error {
+	argoCfg, ok := cfg.(*template.ArgoCDTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for argocd plugin: expected *template.ArgoCDTemplate")
+	}
+
 	// Set defaults
-	namespace := cfg.Namespace
+	namespace := argoCfg.Namespace
 	if namespace == "" {
 		namespace = "argocd"
 	}
 
-	version := cfg.Version
+	version := argoCfg.Version
 	if version == "" {
 		version = "stable"
 	}
@@ -99,16 +108,16 @@ func (p *Plugin) Install(cfg *template.ArgoCDTemplate, kubecontext string) error
 	p.Log.Success("ArgoCD server is ready\n")
 
 	// Configure ingress if enabled
-	if cfg.Ingress != nil && cfg.Ingress.Enabled {
-		if err := p.configureIngress(cfg.Ingress, kubecontext, namespace); err != nil {
+	if argoCfg.Ingress != nil && argoCfg.Ingress.Enabled {
+		if err := p.configureIngress(argoCfg.Ingress, kubecontext, namespace); err != nil {
 			return fmt.Errorf("failed to configure ArgoCD ingress: %w", err)
 		}
 	}
 
 	// Add repositories
-	if len(cfg.Repos) > 0 {
+	if len(argoCfg.Repos) > 0 {
 		p.Log.Info("Adding repositories...\n")
-		for _, repo := range cfg.Repos {
+		for _, repo := range argoCfg.Repos {
 			if err := p.addRepository(repo, kubecontext, namespace); err != nil {
 				return fmt.Errorf("failed to add repository %s: %w", repo.URL, err)
 			}
@@ -117,9 +126,9 @@ func (p *Plugin) Install(cfg *template.ArgoCDTemplate, kubecontext string) error
 	}
 
 	// Create applications
-	if len(cfg.Apps) > 0 {
+	if len(argoCfg.Apps) > 0 {
 		p.Log.Info("Creating applications...\n")
-		for _, app := range cfg.Apps {
+		for _, app := range argoCfg.Apps {
 			if err := p.createApplication(app, kubecontext, namespace); err != nil {
 				return fmt.Errorf("failed to create application %s: %w", app.Name, err)
 			}
@@ -129,8 +138,8 @@ func (p *Plugin) Install(cfg *template.ArgoCDTemplate, kubecontext string) error
 
 	// Print access info
 	p.Log.Success("\nArgoCD installed successfully!\n")
-	if cfg.Ingress != nil && cfg.Ingress.Enabled {
-		p.Log.Info("\nArgoCD UI available at: http://%s\n", cfg.Ingress.Host)
+	if argoCfg.Ingress != nil && argoCfg.Ingress.Enabled {
+		p.Log.Info("\nArgoCD UI available at: http://%s\n", argoCfg.Ingress.Host)
 	} else {
 		p.Log.Info("\nTo access ArgoCD UI:\n")
 		p.Log.Info("  kubectl port-forward svc/argocd-server -n %s 8080:443\n", namespace)
@@ -139,22 +148,268 @@ func (p *Plugin) Install(cfg *template.ArgoCDTemplate, kubecontext string) error
 	p.Log.Info("\nGet admin password:\n")
 	p.Log.Info("  kubectl -n %s get secret argocd-initial-admin-secret -o jsonpath=\"{.data.password}\" | base64 -d\n", namespace)
 
-	if len(cfg.Repos) > 0 {
+	if len(argoCfg.Repos) > 0 {
 		p.Log.Info("\nConfigured repositories:\n")
-		for _, repo := range cfg.Repos {
+		for _, repo := range argoCfg.Repos {
 			p.Log.Info("  - %s (%s)\n", repo.URL, repo.Name)
 		}
 	}
 
-	if len(cfg.Apps) > 0 {
+	if len(argoCfg.Apps) > 0 {
 		p.Log.Info("\nConfigured applications:\n")
-		for _, app := range cfg.Apps {
+		for _, app := range argoCfg.Apps {
 			if app.Chart != "" {
 				p.Log.Info("  - %s (chart: %s@%s -> %s)\n", app.Name, app.Chart, app.TargetRevision, app.Namespace)
 			} else {
 				p.Log.Info("  - %s (path: %s@%s -> %s)\n", app.Name, app.Path, app.TargetRevision, app.Namespace)
 			}
 		}
+	}
+
+	return nil
+}
+
+// Uninstall removes the ArgoCD plugin.
+func (p *Plugin) Uninstall(cfg interface{}, kubecontext string) error {
+	argoCfg, ok := cfg.(*template.ArgoCDTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for argocd plugin")
+	}
+
+	namespace := argoCfg.Namespace
+	if namespace == "" {
+		namespace = "argocd"
+	}
+
+	p.Log.Info("Uninstalling ArgoCD from namespace '%s'...\n", namespace)
+
+	if err := p.runKubectl(kubecontext, "delete", "namespace", namespace); err != nil {
+		return fmt.Errorf("failed to delete namespace: %w", err)
+	}
+
+	p.Log.Success("ArgoCD uninstalled\n")
+	return nil
+}
+
+// IsInstalled checks if ArgoCD is installed.
+func (p *Plugin) IsInstalled(kubecontext string) (bool, error) {
+	// Use default namespace for check
+	return p.IsInstalledInNamespace(kubecontext, "argocd")
+}
+
+// IsInstalledInNamespace checks if ArgoCD is installed in a specific namespace.
+func (p *Plugin) IsInstalledInNamespace(kubecontext, namespace string) (bool, error) {
+	if namespace == "" {
+		namespace = "argocd"
+	}
+
+	cmd := execCommand("kubectl", "--context", kubecontext, "get", "deployment", "argocd-server", "-n", namespace)
+	if err := cmd.Run(); err != nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+// Upgrade upgrades ArgoCD with diff-based repos/apps management.
+func (p *Plugin) Upgrade(cfg interface{}, kubecontext string, providerType string) error {
+	argoCfg, ok := cfg.(*template.ArgoCDTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for argocd plugin")
+	}
+
+	namespace := argoCfg.Namespace
+	if namespace == "" {
+		namespace = "argocd"
+	}
+
+	version := argoCfg.Version
+	if version == "" {
+		version = "stable"
+	}
+
+	p.Log.Info("Upgrading ArgoCD...\n")
+
+	// Re-apply ArgoCD manifest (idempotent, updates version if changed)
+	manifestURL := fmt.Sprintf("https://raw.githubusercontent.com/argoproj/argo-cd/%s/manifests/install.yaml", version)
+	p.Log.Info("Applying manifest from %s...\n", manifestURL)
+	if err := p.runKubectlApply(kubecontext, namespace, manifestURL); err != nil {
+		return fmt.Errorf("failed to apply ArgoCD manifest: %w", err)
+	}
+
+	p.Log.Info("Waiting for ArgoCD server to be ready...\n")
+	if err := p.waitForDeployment(kubecontext, namespace, "argocd-server", p.Timeout); err != nil {
+		return fmt.Errorf("ArgoCD server not ready: %w", err)
+	}
+	p.Log.Success("ArgoCD server is ready\n")
+
+	// Configure ingress if enabled
+	if argoCfg.Ingress != nil && argoCfg.Ingress.Enabled {
+		if err := p.configureIngress(argoCfg.Ingress, kubecontext, namespace); err != nil {
+			return fmt.Errorf("failed to configure ArgoCD ingress: %w", err)
+		}
+	}
+
+	// --- Repos diff ---
+	desiredRepos := make(map[string]template.ArgoCDRepoTemplate)
+	for _, repo := range argoCfg.Repos {
+		name := p.repoName(repo)
+		desiredRepos[name] = repo
+	}
+
+	currentRepos, err := p.ListCurrentRepos(kubecontext, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to list current repos: %w", err)
+	}
+
+	// Add/update desired repos (kubectl apply is idempotent)
+	for _, repo := range argoCfg.Repos {
+		if err := p.addRepository(repo, kubecontext, namespace); err != nil {
+			return fmt.Errorf("failed to add/update repository %s: %w", repo.URL, err)
+		}
+	}
+	p.Log.Success("Repositories applied (%d)\n", len(argoCfg.Repos))
+
+	// Remove repos that are no longer in config
+	removedRepos := 0
+	for _, currentName := range currentRepos {
+		if _, desired := desiredRepos[currentName]; !desired {
+			p.Log.Info("Removing repository '%s'...\n", currentName)
+			if err := p.deleteRepo(currentName, kubecontext, namespace); err != nil {
+				return fmt.Errorf("failed to delete repository %s: %w", currentName, err)
+			}
+			removedRepos++
+		}
+	}
+	if removedRepos > 0 {
+		p.Log.Success("Removed %d repository(ies)\n", removedRepos)
+	}
+
+	// --- Apps diff ---
+	desiredApps := make(map[string]template.ArgoCDAppTemplate)
+	for _, app := range argoCfg.Apps {
+		desiredApps[app.Name] = app
+	}
+
+	currentApps, err := p.ListCurrentApps(kubecontext, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to list current apps: %w", err)
+	}
+
+	// Add/update desired apps (kubectl apply is idempotent)
+	for _, app := range argoCfg.Apps {
+		if err := p.createApplication(app, kubecontext, namespace); err != nil {
+			return fmt.Errorf("failed to add/update application %s: %w", app.Name, err)
+		}
+	}
+	p.Log.Success("Applications applied (%d)\n", len(argoCfg.Apps))
+
+	// Remove apps that are no longer in config
+	removedApps := 0
+	for _, currentName := range currentApps {
+		if _, desired := desiredApps[currentName]; !desired {
+			p.Log.Info("Removing application '%s'...\n", currentName)
+			if err := p.deleteApp(currentName, kubecontext, namespace); err != nil {
+				return fmt.Errorf("failed to delete application %s: %w", currentName, err)
+			}
+			removedApps++
+		}
+	}
+	if removedApps > 0 {
+		p.Log.Success("Removed %d application(s)\n", removedApps)
+	}
+
+	p.Log.Success("\nArgoCD upgrade completed\n")
+	return nil
+}
+
+// DryRun shows what would change without applying anything.
+func (p *Plugin) DryRun(cfg interface{}, kubecontext string, providerType string) error {
+	argoCfg, ok := cfg.(*template.ArgoCDTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for argocd plugin")
+	}
+
+	namespace := argoCfg.Namespace
+	if namespace == "" {
+		namespace = "argocd"
+	}
+
+	version := argoCfg.Version
+	if version == "" {
+		version = "stable"
+	}
+
+	fmt.Printf("[argocd] Dry-run: version %s, namespace %s\n", version, namespace)
+
+	// --- Repos diff ---
+	desiredRepos := make(map[string]bool)
+	for _, repo := range argoCfg.Repos {
+		desiredRepos[p.repoName(repo)] = true
+	}
+
+	currentRepos, err := p.ListCurrentRepos(kubecontext, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to list current repos: %w", err)
+	}
+	currentRepoSet := make(map[string]bool)
+	for _, name := range currentRepos {
+		currentRepoSet[name] = true
+	}
+
+	fmt.Println("\n  Repositories:")
+	changes := false
+	for _, repo := range argoCfg.Repos {
+		name := p.repoName(repo)
+		if currentRepoSet[name] {
+			fmt.Printf("    ~ %s (update)\n", name)
+		} else {
+			fmt.Printf("    + %s (add)\n", name)
+		}
+		changes = true
+	}
+	for _, name := range currentRepos {
+		if !desiredRepos[name] {
+			fmt.Printf("    - %s (remove)\n", name)
+			changes = true
+		}
+	}
+	if !changes {
+		fmt.Println("    (no changes)")
+	}
+
+	// --- Apps diff ---
+	desiredApps := make(map[string]bool)
+	for _, app := range argoCfg.Apps {
+		desiredApps[app.Name] = true
+	}
+
+	currentApps, err := p.ListCurrentApps(kubecontext, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to list current apps: %w", err)
+	}
+	currentAppSet := make(map[string]bool)
+	for _, name := range currentApps {
+		currentAppSet[name] = true
+	}
+
+	fmt.Println("\n  Applications:")
+	changes = false
+	for _, app := range argoCfg.Apps {
+		if currentAppSet[app.Name] {
+			fmt.Printf("    ~ %s (update)\n", app.Name)
+		} else {
+			fmt.Printf("    + %s (add)\n", app.Name)
+		}
+		changes = true
+	}
+	for _, name := range currentApps {
+		if !desiredApps[name] {
+			fmt.Printf("    - %s (remove)\n", name)
+			changes = true
+		}
+	}
+	if !changes {
+		fmt.Println("    (no changes)")
 	}
 
 	return nil
@@ -364,200 +619,6 @@ spec:
 	})
 }
 
-func (p *Plugin) Upgrade(cfg *template.ArgoCDTemplate, kubecontext string) error {
-	namespace := cfg.Namespace
-	if namespace == "" {
-		namespace = "argocd"
-	}
-
-	version := cfg.Version
-	if version == "" {
-		version = "stable"
-	}
-
-	p.Log.Info("Upgrading ArgoCD...\n")
-
-	// Re-apply ArgoCD manifest (idempotent, updates version if changed)
-	manifestURL := fmt.Sprintf("https://raw.githubusercontent.com/argoproj/argo-cd/%s/manifests/install.yaml", version)
-	p.Log.Info("Applying manifest from %s...\n", manifestURL)
-	if err := p.runKubectlApply(kubecontext, namespace, manifestURL); err != nil {
-		return fmt.Errorf("failed to apply ArgoCD manifest: %w", err)
-	}
-
-	p.Log.Info("Waiting for ArgoCD server to be ready...\n")
-	if err := p.waitForDeployment(kubecontext, namespace, "argocd-server", p.Timeout); err != nil {
-		return fmt.Errorf("ArgoCD server not ready: %w", err)
-	}
-	p.Log.Success("ArgoCD server is ready\n")
-
-	// Configure ingress if enabled
-	if cfg.Ingress != nil && cfg.Ingress.Enabled {
-		if err := p.configureIngress(cfg.Ingress, kubecontext, namespace); err != nil {
-			return fmt.Errorf("failed to configure ArgoCD ingress: %w", err)
-		}
-	}
-
-	// --- Repos diff ---
-	desiredRepos := make(map[string]template.ArgoCDRepoTemplate)
-	for _, repo := range cfg.Repos {
-		name := p.repoName(repo)
-		desiredRepos[name] = repo
-	}
-
-	currentRepos, err := p.ListCurrentRepos(kubecontext, namespace)
-	if err != nil {
-		return fmt.Errorf("failed to list current repos: %w", err)
-	}
-
-	// Add/update desired repos (kubectl apply is idempotent)
-	for _, repo := range cfg.Repos {
-		if err := p.addRepository(repo, kubecontext, namespace); err != nil {
-			return fmt.Errorf("failed to add/update repository %s: %w", repo.URL, err)
-		}
-	}
-	p.Log.Success("Repositories applied (%d)\n", len(cfg.Repos))
-
-	// Remove repos that are no longer in config
-	removedRepos := 0
-	for _, currentName := range currentRepos {
-		if _, desired := desiredRepos[currentName]; !desired {
-			p.Log.Info("Removing repository '%s'...\n", currentName)
-			if err := p.deleteRepo(currentName, kubecontext, namespace); err != nil {
-				return fmt.Errorf("failed to delete repository %s: %w", currentName, err)
-			}
-			removedRepos++
-		}
-	}
-	if removedRepos > 0 {
-		p.Log.Success("Removed %d repository(ies)\n", removedRepos)
-	}
-
-	// --- Apps diff ---
-	desiredApps := make(map[string]template.ArgoCDAppTemplate)
-	for _, app := range cfg.Apps {
-		desiredApps[app.Name] = app
-	}
-
-	currentApps, err := p.ListCurrentApps(kubecontext, namespace)
-	if err != nil {
-		return fmt.Errorf("failed to list current apps: %w", err)
-	}
-
-	// Add/update desired apps (kubectl apply is idempotent)
-	for _, app := range cfg.Apps {
-		if err := p.createApplication(app, kubecontext, namespace); err != nil {
-			return fmt.Errorf("failed to add/update application %s: %w", app.Name, err)
-		}
-	}
-	p.Log.Success("Applications applied (%d)\n", len(cfg.Apps))
-
-	// Remove apps that are no longer in config
-	removedApps := 0
-	for _, currentName := range currentApps {
-		if _, desired := desiredApps[currentName]; !desired {
-			p.Log.Info("Removing application '%s'...\n", currentName)
-			if err := p.deleteApp(currentName, kubecontext, namespace); err != nil {
-				return fmt.Errorf("failed to delete application %s: %w", currentName, err)
-			}
-			removedApps++
-		}
-	}
-	if removedApps > 0 {
-		p.Log.Success("Removed %d application(s)\n", removedApps)
-	}
-
-	p.Log.Success("\nArgoCD upgrade completed\n")
-	return nil
-}
-
-// DryRun shows what would change without applying anything.
-func (p *Plugin) DryRun(cfg *template.ArgoCDTemplate, kubecontext string) error {
-	namespace := cfg.Namespace
-	if namespace == "" {
-		namespace = "argocd"
-	}
-
-	version := cfg.Version
-	if version == "" {
-		version = "stable"
-	}
-
-	fmt.Printf("[argocd] Dry-run: version %s, namespace %s\n", version, namespace)
-
-	// --- Repos diff ---
-	desiredRepos := make(map[string]bool)
-	for _, repo := range cfg.Repos {
-		desiredRepos[p.repoName(repo)] = true
-	}
-
-	currentRepos, err := p.ListCurrentRepos(kubecontext, namespace)
-	if err != nil {
-		return fmt.Errorf("failed to list current repos: %w", err)
-	}
-	currentRepoSet := make(map[string]bool)
-	for _, name := range currentRepos {
-		currentRepoSet[name] = true
-	}
-
-	fmt.Println("\n  Repositories:")
-	changes := false
-	for _, repo := range cfg.Repos {
-		name := p.repoName(repo)
-		if currentRepoSet[name] {
-			fmt.Printf("    ~ %s (update)\n", name)
-		} else {
-			fmt.Printf("    + %s (add)\n", name)
-		}
-		changes = true
-	}
-	for _, name := range currentRepos {
-		if !desiredRepos[name] {
-			fmt.Printf("    - %s (remove)\n", name)
-			changes = true
-		}
-	}
-	if !changes {
-		fmt.Println("    (no changes)")
-	}
-
-	// --- Apps diff ---
-	desiredApps := make(map[string]bool)
-	for _, app := range cfg.Apps {
-		desiredApps[app.Name] = true
-	}
-
-	currentApps, err := p.ListCurrentApps(kubecontext, namespace)
-	if err != nil {
-		return fmt.Errorf("failed to list current apps: %w", err)
-	}
-	currentAppSet := make(map[string]bool)
-	for _, name := range currentApps {
-		currentAppSet[name] = true
-	}
-
-	fmt.Println("\n  Applications:")
-	changes = false
-	for _, app := range cfg.Apps {
-		if currentAppSet[app.Name] {
-			fmt.Printf("    ~ %s (update)\n", app.Name)
-		} else {
-			fmt.Printf("    + %s (add)\n", app.Name)
-		}
-		changes = true
-	}
-	for _, name := range currentApps {
-		if !desiredApps[name] {
-			fmt.Printf("    - %s (remove)\n", name)
-			changes = true
-		}
-	}
-	if !changes {
-		fmt.Println("    (no changes)")
-	}
-
-	return nil
-}
-
 // repoName returns the secret name for a repo config (without the "repo-" prefix).
 func (p *Plugin) repoName(repo template.ArgoCDRepoTemplate) string {
 	name := repo.Name
@@ -573,7 +634,7 @@ func (p *Plugin) repoName(repo template.ArgoCDRepoTemplate) string {
 	return name
 }
 
-// listCurrentRepos returns the names of repo secrets (without the "repo-" prefix)
+// ListCurrentRepos returns the names of repo secrets (without the "repo-" prefix)
 // that have the ArgoCD repository label.
 func (p *Plugin) ListCurrentRepos(kubecontext, namespace string) ([]string, error) {
 	cmd := execCommand("kubectl", "--context", kubecontext,
@@ -599,7 +660,7 @@ func (p *Plugin) ListCurrentRepos(kubecontext, namespace string) ([]string, erro
 	return names, nil
 }
 
-// listCurrentApps returns the names of ArgoCD Application resources in the namespace.
+// ListCurrentApps returns the names of ArgoCD Application resources in the namespace.
 func (p *Plugin) ListCurrentApps(kubecontext, namespace string) ([]string, error) {
 	cmd := execCommand("kubectl", "--context", kubecontext,
 		"get", "applications.argoproj.io", "-n", namespace,
@@ -702,33 +763,6 @@ data:
 	}
 
 	return nil
-}
-
-func (p *Plugin) Uninstall(kubecontext string, namespace string) error {
-	if namespace == "" {
-		namespace = "argocd"
-	}
-
-	p.Log.Info("Uninstalling ArgoCD from namespace '%s'...\n", namespace)
-
-	if err := p.runKubectl(kubecontext, "delete", "namespace", namespace); err != nil {
-		return fmt.Errorf("failed to delete namespace: %w", err)
-	}
-
-	p.Log.Success("ArgoCD uninstalled\n")
-	return nil
-}
-
-func (p *Plugin) IsInstalled(kubecontext string, namespace string) (bool, error) {
-	if namespace == "" {
-		namespace = "argocd"
-	}
-
-	cmd := execCommand("kubectl", "--context", kubecontext, "get", "deployment", "argocd-server", "-n", namespace)
-	if err := cmd.Run(); err != nil {
-		return false, nil
-	}
-	return true, nil
 }
 
 func (p *Plugin) runKubectl(kubecontext string, args ...string) error {

@@ -61,7 +61,7 @@ var createCmd = &cobra.Command{
 
 		// Print summary and final info
 		if len(results) > 0 {
-			printSummary(results, log)
+			printPluginSummary(results, log)
 		}
 
 		log.Info("\nTo use the cluster:\n")

@@ -6,9 +6,9 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/alepito/deploy-cluster/pkg/template"
 	"github.com/alepito/deploy-cluster/pkg/logger"
 	"github.com/alepito/deploy-cluster/pkg/retry"
+	"github.com/alepito/deploy-cluster/pkg/template"
 )
 
 // execCommand is a package-level variable for creating exec.Cmd, replaceable in tests.
@@ -19,41 +19,57 @@ const (
 	nginxManifestCloudURL = "https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.0/deploy/static/provider/cloud/deploy.yaml"
 )
 
+// Plugin implements the plugin.Plugin interface for ingress.
 type Plugin struct {
 	Log     *logger.Logger
 	Timeout time.Duration
 }
 
+// New creates a new ingress plugin.
 func New(log *logger.Logger, timeout time.Duration) *Plugin {
 	return &Plugin{Log: log, Timeout: timeout}
 }
 
+// Name returns the plugin name.
 func (p *Plugin) Name() string {
 	return "ingress"
 }
 
-func (p *Plugin) Install(cfg *template.IngressTemplate, kubecontext string, providerType string) error {
-	switch cfg.Type {
+// Install installs the ingress plugin.
+func (p *Plugin) Install(cfg interface{}, kubecontext string, providerType string) error {
+	ingressCfg, ok := cfg.(*template.IngressTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for ingress plugin: expected *template.IngressTemplate")
+	}
+
+	switch ingressCfg.Type {
 	case "nginx":
 		return p.installNginx(kubecontext, providerType)
 	case "traefik":
 		return p.installTraefik(kubecontext)
 	default:
-		return fmt.Errorf("unsupported ingress type: %s (supported: nginx, traefik)", cfg.Type)
+		return fmt.Errorf("unsupported ingress type: %s (supported: nginx, traefik)", ingressCfg.Type)
 	}
 }
 
-func (p *Plugin) Uninstall(cfg *template.IngressTemplate, kubecontext string) error {
-	switch cfg.Type {
+// Uninstall removes the ingress plugin.
+func (p *Plugin) Uninstall(cfg interface{}, kubecontext string) error {
+	ingressCfg, ok := cfg.(*template.IngressTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for ingress plugin")
+	}
+
+	switch ingressCfg.Type {
 	case "nginx":
 		return p.uninstallNginx(kubecontext)
 	case "traefik":
 		return p.uninstallTraefik(kubecontext)
 	default:
-		return fmt.Errorf("unsupported ingress type: %s", cfg.Type)
+		return fmt.Errorf("unsupported ingress type: %s", ingressCfg.Type)
 	}
 }
 
+// IsInstalled checks if the ingress plugin is installed.
 func (p *Plugin) IsInstalled(kubecontext string) (bool, error) {
 	// Check nginx
 	cmd := execCommand("kubectl", "--context", kubecontext,
@@ -70,6 +86,37 @@ func (p *Plugin) IsInstalled(kubecontext string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// Upgrade re-applies the ingress configuration (idempotent).
+func (p *Plugin) Upgrade(cfg interface{}, kubecontext string, providerType string) error {
+	// For ingress, upgrade is the same as install (idempotent)
+	return p.Install(cfg, kubecontext, providerType)
+}
+
+// DryRun shows what would be installed.
+func (p *Plugin) DryRun(cfg interface{}, kubecontext string, providerType string) error {
+	ingressCfg, ok := cfg.(*template.IngressTemplate)
+	if !ok {
+		return fmt.Errorf("invalid config type for ingress plugin")
+	}
+
+	fmt.Printf("[ingress] Would install: %s\n", ingressCfg.Type)
+
+	installed, err := p.IsInstalled(kubecontext)
+	if err != nil {
+		return err
+	}
+	if installed {
+		fmt.Println("  Status: already installed (would skip)")
+	} else {
+		fmt.Println("  Status: not installed")
+		if ingressCfg.Type == "nginx" {
+			url := p.nginxManifestURL(providerType)
+			fmt.Printf("  Manifest: %s\n", url)
+		}
+	}
+	return nil
 }
 
 func (p *Plugin) nginxManifestURL(providerType string) string {

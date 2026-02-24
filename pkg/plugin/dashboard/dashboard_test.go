@@ -42,7 +42,7 @@ func TestName(t *testing.T) {
 func TestInstall_UnsupportedType(t *testing.T) {
 	p := New(testLogger(), 5*time.Minute)
 	cfg := &template.DashboardTemplate{Enabled: true, Type: "lens"}
-	err := p.Install(cfg, "fake-context")
+	err := p.Install(cfg, "fake-context", "kind")
 	if err == nil {
 		t.Fatal("Install() should fail for unsupported type")
 	}

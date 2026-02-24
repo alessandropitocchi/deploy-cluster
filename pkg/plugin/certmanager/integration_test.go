@@ -36,7 +36,7 @@ func TestInstall_Commands(t *testing.T) {
 	p := New(quietLogger(), 5*time.Minute)
 	cfg := &template.CertManagerTemplate{Enabled: true, Version: "v1.16.3"}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -67,7 +67,7 @@ func TestInstall_CustomTimeout(t *testing.T) {
 	p := New(quietLogger(), 10*time.Minute)
 	cfg := &template.CertManagerTemplate{Enabled: true}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -89,7 +89,7 @@ func TestInstall_DefaultVersion(t *testing.T) {
 	p := New(quietLogger(), 5*time.Minute)
 	cfg := &template.CertManagerTemplate{Enabled: true} // no version
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -101,7 +101,7 @@ func TestInstall_CustomVersion(t *testing.T) {
 	p := New(quietLogger(), 5*time.Minute)
 	cfg := &template.CertManagerTemplate{Enabled: true, Version: "v1.14.0"}
 
-	if err := p.Install(cfg, "kind-test"); err != nil {
+	if err := p.Install(cfg, "kind-test", "kind"); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
