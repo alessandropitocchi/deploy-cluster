@@ -448,31 +448,33 @@ func (l *Linter) checkBestPractices(t *template.Template) []Issue {
 	}
 
 	// Check for empty ArgoCD repo URLs
-	for i, repo := range t.Plugins.ArgoCD.Repos {
-		if repo.URL == "" {
-			issues = append(issues, Issue{
-				Severity: SeverityError,
-				Path:     fmt.Sprintf("plugins.argocd.repos[%d].url", i),
-				Message:  "repository URL is required",
-			})
+	if t.Plugins.ArgoCD != nil {
+		for i, repo := range t.Plugins.ArgoCD.Repos {
+			if repo.URL == "" {
+				issues = append(issues, Issue{
+					Severity: SeverityError,
+					Path:     fmt.Sprintf("plugins.argocd.repos[%d].url", i),
+					Message:  "repository URL is required",
+				})
+			}
 		}
-	}
 
-	// Check for empty ArgoCD app names and repoURLs
-	for i, app := range t.Plugins.ArgoCD.Apps {
-		if app.Name == "" {
-			issues = append(issues, Issue{
-				Severity: SeverityError,
-				Path:     fmt.Sprintf("plugins.argocd.apps[%d].name", i),
-				Message:  "application name is required",
-			})
-		}
-		if app.RepoURL == "" {
-			issues = append(issues, Issue{
-				Severity: SeverityError,
-				Path:     fmt.Sprintf("plugins.argocd.apps[%d].repoURL", i),
-				Message:  "application repoURL is required",
-			})
+		// Check for empty ArgoCD app names and repoURLs
+		for i, app := range t.Plugins.ArgoCD.Apps {
+			if app.Name == "" {
+				issues = append(issues, Issue{
+					Severity: SeverityError,
+					Path:     fmt.Sprintf("plugins.argocd.apps[%d].name", i),
+					Message:  "application name is required",
+				})
+			}
+			if app.RepoURL == "" {
+				issues = append(issues, Issue{
+					Severity: SeverityError,
+					Path:     fmt.Sprintf("plugins.argocd.apps[%d].repoURL", i),
+					Message:  "application repoURL is required",
+				})
+			}
 		}
 	}
 

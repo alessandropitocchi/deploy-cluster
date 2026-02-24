@@ -1,0 +1,20 @@
+name: opentest
+provider:
+    type: kind
+cluster:
+    controlPlanes: 1
+    workers: 1
+    version: v1.31.0
+plugins:
+    certManager:
+        enabled: true
+        version: v1.16.3
+    customApps:
+        - name: open-telemetry
+          namespace: observability
+          chartRepo: https://open-telemetry.github.io/opentelemetry-helm-charts
+          chartName: opentelemetry-demo
+
+
+        
+
