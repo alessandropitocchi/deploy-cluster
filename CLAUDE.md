@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Core Concepts
 
 - **Providers**: Abstraction layer for cluster providers. Interface in `pkg/provider/provider.go`. Implemented: **kind**, **k3d**.
-- **Plugins**: Modular components installed on clusters. Each plugin implements the unified `Plugin` interface in `pkg/plugin/plugin.go`. Implemented: **storage** (local-path-provisioner), **ingress** (nginx or traefik), **cert-manager**, **monitoring** (kube-prometheus-stack via Helm), **dashboard** (Headlamp via Helm), **customApps** (arbitrary Helm charts), **ArgoCD**.
+- **Plugins**: Modular components installed on clusters. Each plugin implements the unified `Plugin` interface in `pkg/plugin/plugin.go`. Implemented: **storage** (local-path-provisioner), **ingress** (nginx or traefik), **cert-manager**, **external-dns** (automatic DNS management), **monitoring** (kube-prometheus-stack via Helm), **dashboard** (Headlamp via Helm), **customApps** (arbitrary Helm charts), **ArgoCD**.
 - **Plugin Manager**: Orchestrates plugin installation in `pkg/plugin/manager.go`. Handles install order, parallel execution, and result tracking.
 - **Linter**: Validates templates for errors and best practices in `pkg/linter/linter.go`.
 - **Template**: Single `template.yaml` defines cluster topology + all plugins. Parsed and validated in `pkg/template/`.
@@ -113,6 +113,7 @@ pkg/
     certmanager/            # Cert-manager plugin
     customapps/             # Custom apps plugin
     dashboard/              # Dashboard plugin
+    externaldns/            # External DNS plugin
     ingress/                # Ingress plugin
     monitoring/             # Monitoring plugin
     storage/                # Storage plugin

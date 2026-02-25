@@ -78,6 +78,7 @@ var InstallOrder = []string{
 	"storage",
 	"ingress",
 	"cert-manager",
+	"external-dns",
 	"monitoring",
 	"dashboard",
 	"custom-apps",
@@ -118,6 +119,12 @@ var Extractors = []PluginConfigExtractor{
 			return "cert-manager", t.Plugins.CertManager, t.Plugins.CertManager.Enabled
 		}
 		return "cert-manager", nil, false
+	},
+	func(t *template.Template) (string, interface{}, bool) {
+		if t.Plugins.ExternalDNS != nil {
+			return "external-dns", t.Plugins.ExternalDNS, t.Plugins.ExternalDNS.Enabled
+		}
+		return "external-dns", nil, false
 	},
 	func(t *template.Template) (string, interface{}, bool) {
 		if t.Plugins.Monitoring != nil {

@@ -16,6 +16,7 @@ plugins:
   storage: { ... }            # StorageClass provisioner
   ingress: { ... }            # Ingress controller
   certManager: { ... }        # TLS certificate management
+  externalDNS: { ... }        # Automatic DNS management
   monitoring: { ... }         # Prometheus + Grafana
   dashboard: { ... }          # Kubernetes dashboard
   customApps: [ ... ]         # Custom Helm charts
@@ -43,6 +44,7 @@ Detailed documentation for each plugin can be found in the [plugins/](plugins/) 
 | Storage | [plugins/storage.md](plugins/storage.md) | StorageClass provisioner |
 | Ingress | [plugins/ingress.md](plugins/ingress.md) | NGINX ingress controller |
 | Cert-Manager | [plugins/cert-manager.md](plugins/cert-manager.md) | TLS certificate management |
+| External DNS | [plugins/external-dns.md](plugins/external-dns.md) | Automatic DNS management |
 | Monitoring | [plugins/monitoring.md](plugins/monitoring.md) | Prometheus + Grafana via Helm |
 | Dashboard | [plugins/dashboard.md](plugins/dashboard.md) | Headlamp via Helm |
 | Custom Apps | [plugins/custom-apps.md](plugins/custom-apps.md) | Custom Helm charts |
@@ -90,6 +92,13 @@ plugins:
   certManager:
     enabled: true
     version: v1.16.3
+  externalDNS:
+    enabled: true
+    provider: cloudflare
+    zone: example.com
+    source: ingress
+    credentials:
+      apiToken: ${CF_API_TOKEN}
   monitoring:
     enabled: true
     type: prometheus

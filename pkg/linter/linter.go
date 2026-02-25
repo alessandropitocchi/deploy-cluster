@@ -4,6 +4,7 @@ package linter
 import (
 	"fmt"
 	"net"
+	"os"
 	"regexp"
 	"strings"
 
@@ -342,6 +343,15 @@ func (l *Linter) checkResourceReferences(t *template.Template) []Issue {
 	needsIngress := false
 	needsIngressPaths := []string{}
 
+	// External DNS requires ingress for source=ingress (default)
+	if t.Plugins.ExternalDNS != nil && t.Plugins.ExternalDNS.Enabled {
+		source := t.Plugins.ExternalDNS.Source
+		if source == "" || source == "ingress" || source == "both" {
+			needsIngress = true
+			needsIngressPaths = append(needsIngressPaths, "plugins.externalDNS (source=ingress)")
+		}
+	}
+
 	if t.Plugins.Monitoring != nil && t.Plugins.Monitoring.Enabled {
 		if ing := t.Plugins.Monitoring.Ingress; ing != nil && ing.Enabled {
 			needsIngress = true
@@ -430,6 +440,58 @@ func (l *Linter) checkBestPractices(t *template.Template) []Issue {
 				Path:     "plugins.argocd",
 				Message:  "ArgoCD has applications configured but no repositories defined",
 			})
+		}
+	}
+
+	// External DNS checks
+	if t.Plugins.ExternalDNS != nil && t.Plugins.ExternalDNS.Enabled {
+		// Check for zone configuration
+		if t.Plugins.ExternalDNS.Zone == "" {
+			issues = append(issues, Issue{
+				Severity: SeverityWarning,
+				Path:     "plugins.externalDNS.zone",
+				Message:  "zone is recommended to limit DNS management scope",
+			})
+		}
+
+		// Check for credentials based on provider
+		provider := t.Plugins.ExternalDNS.Provider
+		creds := t.Plugins.ExternalDNS.Credentials
+
+		switch provider {
+		case "cloudflare":
+			if creds["apiToken"] == "" && os.Getenv("CF_API_TOKEN") == "" {
+				issues = append(issues, Issue{
+					Severity: SeverityWarning,
+					Path:     "plugins.externalDNS.credentials.apiToken",
+					Message:  "CF_API_TOKEN not set in credentials or environment",
+				})
+			}
+		case "route53":
+			// AWS credentials can come from env vars or IRSA, so just info
+			if creds["accessKey"] == "" && os.Getenv("AWS_ACCESS_KEY_ID") == "" {
+				issues = append(issues, Issue{
+					Severity: SeverityInfo,
+					Path:     "plugins.externalDNS.credentials",
+					Message:  "AWS credentials not found in config or env vars (will use IRSA or instance profile if available)",
+				})
+			}
+		case "digitalocean":
+			if creds["token"] == "" && os.Getenv("DO_TOKEN") == "" {
+				issues = append(issues, Issue{
+					Severity: SeverityWarning,
+					Path:     "plugins.externalDNS.credentials.token",
+					Message:  "DO_TOKEN not set in credentials or environment",
+				})
+			}
+		case "google":
+			if creds["project"] == "" && os.Getenv("GOOGLE_PROJECT") == "" {
+				issues = append(issues, Issue{
+					Severity: SeverityWarning,
+					Path:     "plugins.externalDNS.credentials.project",
+					Message:  "GOOGLE_PROJECT not set in credentials or environment",
+				})
+			}
 		}
 	}
 

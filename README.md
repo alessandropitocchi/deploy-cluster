@@ -72,6 +72,12 @@ plugins:
     type: nginx
   certManager:
     enabled: true
+  externalDNS:
+    enabled: true
+    provider: cloudflare
+    zone: example.com
+    credentials:
+      apiToken: ${CF_API_TOKEN}
   monitoring:
     enabled: true
     type: prometheus
@@ -105,6 +111,7 @@ plugins:
 | [Storage](docs/plugins/storage.md) | StorageClass provisioner (local-path) | kubectl apply |
 | [Ingress](docs/plugins/ingress.md) | NGINX controller for kind | kubectl apply |
 | [Cert-Manager](docs/plugins/cert-manager.md) | TLS certificate management | kubectl apply |
+| [External DNS](docs/plugins/external-dns.md) | Automatic DNS management | Helm |
 | [Monitoring](docs/plugins/monitoring.md) | Prometheus + Grafana | Helm |
 | [Dashboard](docs/plugins/dashboard.md) | Headlamp | Helm |
 | [Custom Apps](docs/plugins/custom-apps.md) | Custom Helm charts | Helm |

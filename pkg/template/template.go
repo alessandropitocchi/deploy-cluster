@@ -14,6 +14,7 @@ var (
 	validIngressTypes    = []string{"nginx", "traefik"}
 	validMonitoringTypes = []string{"prometheus"}
 	validDashboardTypes  = []string{"headlamp"}
+	validExternalDNSProviders = []string{"cloudflare", "route53", "google", "azure", "digitalocean"}
 )
 
 type Template struct {
@@ -37,6 +38,7 @@ type PluginsTemplate struct {
 	Storage     *StorageTemplate     `yaml:"storage,omitempty"`
 	Ingress     *IngressTemplate     `yaml:"ingress,omitempty"`
 	CertManager *CertManagerTemplate `yaml:"certManager,omitempty"`
+	ExternalDNS *ExternalDNSTemplate `yaml:"externalDNS,omitempty"`
 	Monitoring  *MonitoringTemplate  `yaml:"monitoring,omitempty"`
 	Dashboard   *DashboardTemplate   `yaml:"dashboard,omitempty"`
 	CustomApps  []CustomAppTemplate  `yaml:"customApps,omitempty"`
@@ -95,6 +97,15 @@ type IngressTemplate struct {
 type CertManagerTemplate struct {
 	Enabled bool   `yaml:"enabled"`
 	Version string `yaml:"version,omitempty"` // cert-manager version (default: v1.16.3)
+}
+
+type ExternalDNSTemplate struct {
+	Enabled     bool   `yaml:"enabled"`
+	Version     string `yaml:"version,omitempty"`     // external-dns version (default: 1.15.0)
+	Provider    string `yaml:"provider"`              // DNS provider: cloudflare, route53, google, azure
+	Zone        string `yaml:"zone,omitempty"`        // DNS zone (e.g., example.com)
+	Credentials map[string]string `yaml:"credentials,omitempty"` // Provider-specific credentials
+	Source      string `yaml:"source,omitempty"`      // Source: ingress (default), service, both
 }
 
 type MonitoringTemplate struct {
@@ -260,6 +271,37 @@ func (t *Template) Validate() error {
 			}
 			if !valid {
 				errs = append(errs, fmt.Sprintf("plugins.ingress.type %q is not supported (valid: %s)", ing.Type, strings.Join(validIngressTypes, ", ")))
+			}
+		}
+	}
+
+	if extdns := t.Plugins.ExternalDNS; extdns != nil && extdns.Enabled {
+		if extdns.Provider == "" {
+			errs = append(errs, "plugins.externalDNS.provider is required")
+		} else {
+			valid := false
+			for _, p := range validExternalDNSProviders {
+				if extdns.Provider == p {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				errs = append(errs, fmt.Sprintf("plugins.externalDNS.provider %q is not supported (valid: %s)", extdns.Provider, strings.Join(validExternalDNSProviders, ", ")))
+			}
+		}
+		// Validate source if provided
+		if extdns.Source != "" {
+			validSources := []string{"ingress", "service", "both"}
+			valid := false
+			for _, s := range validSources {
+				if extdns.Source == s {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				errs = append(errs, fmt.Sprintf("plugins.externalDNS.source %q is not supported (valid: ingress, service, both)", extdns.Source))
 			}
 		}
 	}

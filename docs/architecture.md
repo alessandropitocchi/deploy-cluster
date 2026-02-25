@@ -43,6 +43,8 @@ deploy-cluster/
 │   │   │   └── customapps.go    # Custom apps plugin implementation
 │   │   ├── dashboard/
 │   │   │   └── dashboard.go     # Dashboard plugin implementation
+│   │   ├── externaldns/
+│   │   │   └── externaldns.go   # External DNS plugin implementation
 │   │   ├── ingress/
 │   │   │   └── ingress.go       # Ingress plugin implementation
 │   │   ├── monitoring/
@@ -105,6 +107,7 @@ Load .env → Load template.yaml → Create cluster (Provider) → Install plugi
    - **Storage**: Applies local-path-provisioner manifest
    - **Ingress**: Applies NGINX or verifies Traefik
    - **Cert-Manager**: Applies cert-manager manifest
+   - **External DNS**: Helm install/upgrade external-dns
    - **Monitoring**: Helm install/upgrade kube-prometheus-stack
    - **Dashboard**: Helm install/upgrade Headlamp
    - **Custom Apps**: Helm install/upgrade for each app
@@ -305,6 +308,7 @@ Resources are applied in dependency order with retry and exponential backoff for
 - [x] Storage plugin (local-path-provisioner)
 - [x] Ingress plugin (nginx for kind, traefik for k3d)
 - [x] Cert-manager plugin
+- [x] External DNS plugin (automatic DNS management)
 - [x] Monitoring plugin (kube-prometheus-stack via Helm)
 - [x] Dashboard plugin (Headlamp via Helm)
 - [x] Custom apps plugin (arbitrary Helm charts)
