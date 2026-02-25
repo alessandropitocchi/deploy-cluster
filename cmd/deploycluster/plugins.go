@@ -13,6 +13,7 @@ import (
 	"github.com/alepito/deploy-cluster/pkg/plugin/dashboard"
 	"github.com/alepito/deploy-cluster/pkg/plugin/externaldns"
 	"github.com/alepito/deploy-cluster/pkg/plugin/ingress"
+	"github.com/alepito/deploy-cluster/pkg/plugin/istio"
 	"github.com/alepito/deploy-cluster/pkg/plugin/monitoring"
 	"github.com/alepito/deploy-cluster/pkg/plugin/storage"
 	"github.com/alepito/deploy-cluster/pkg/template"
@@ -26,6 +27,7 @@ func createRegistry(log *logger.Logger, timeout time.Duration) *plugin.Registry 
 	registry.Register(ingress.New(log.WithPrefix("[ingress]"), timeout))
 	registry.Register(certmanager.New(log.WithPrefix("[cert-manager]"), timeout))
 	registry.Register(externaldns.New(log.WithPrefix("[external-dns]"), timeout))
+	registry.Register(istio.New(log.WithPrefix("[istio]"), timeout))
 	registry.Register(monitoring.New(log.WithPrefix("[monitoring]"), timeout))
 	registry.Register(dashboard.New(log.WithPrefix("[dashboard]"), timeout))
 	registry.Register(customapps.New(log.WithPrefix("[custom-apps]"), timeout))

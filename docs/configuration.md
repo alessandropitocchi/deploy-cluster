@@ -17,6 +17,7 @@ plugins:
   ingress: { ... }            # Ingress controller
   certManager: { ... }        # TLS certificate management
   externalDNS: { ... }        # Automatic DNS management
+  istio: { ... }              # Service mesh
   monitoring: { ... }         # Prometheus + Grafana
   dashboard: { ... }          # Kubernetes dashboard
   customApps: [ ... ]         # Custom Helm charts
@@ -45,6 +46,7 @@ Detailed documentation for each plugin can be found in the [plugins/](plugins/) 
 | Ingress | [plugins/ingress.md](plugins/ingress.md) | NGINX ingress controller |
 | Cert-Manager | [plugins/cert-manager.md](plugins/cert-manager.md) | TLS certificate management |
 | External DNS | [plugins/external-dns.md](plugins/external-dns.md) | Automatic DNS management |
+| Istio | [plugins/istio.md](plugins/istio.md) | Service mesh with mTLS |
 | Monitoring | [plugins/monitoring.md](plugins/monitoring.md) | Prometheus + Grafana via Helm |
 | Dashboard | [plugins/dashboard.md](plugins/dashboard.md) | Headlamp via Helm |
 | Custom Apps | [plugins/custom-apps.md](plugins/custom-apps.md) | Custom Helm charts |
@@ -71,6 +73,25 @@ argocd:
       url: git@github.com:user/repo.git
       sshKeyEnv: ARGOCD_SSH_KEY
 ```
+
+## Templating
+
+deploy-cluster supports Go templates in `template.yaml` for dynamic configuration:
+
+```yaml
+name: "{{ env "CLUSTER_NAME" "my-cluster" }}"
+cluster:
+  workers: {{ env "WORKERS" "2" }}
+plugins:
+  argocd:
+    apps:
+      - name: my-app
+        values:
+          image:
+            tag: "{{ .GitCommit }}"
+```
+
+See [Templating Guide](templating.md) for complete documentation.
 
 ## Complete Example
 
@@ -99,6 +120,10 @@ plugins:
     source: ingress
     credentials:
       apiToken: ${CF_API_TOKEN}
+  istio:
+    enabled: true
+    profile: default
+    ingressGateway: true
   monitoring:
     enabled: true
     type: prometheus

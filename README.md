@@ -112,6 +112,7 @@ plugins:
 | [Ingress](docs/plugins/ingress.md) | NGINX controller for kind | kubectl apply |
 | [Cert-Manager](docs/plugins/cert-manager.md) | TLS certificate management | kubectl apply |
 | [External DNS](docs/plugins/external-dns.md) | Automatic DNS management | Helm |
+| [Istio](docs/plugins/istio.md) | Service mesh with mTLS | istioctl |
 | [Monitoring](docs/plugins/monitoring.md) | Prometheus + Grafana | Helm |
 | [Dashboard](docs/plugins/dashboard.md) | Headlamp | Helm |
 | [Custom Apps](docs/plugins/custom-apps.md) | Custom Helm charts | Helm |

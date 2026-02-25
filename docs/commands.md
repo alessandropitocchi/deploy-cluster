@@ -122,10 +122,11 @@ Plugins are installed in this order:
 2. **Ingress** — to expose services via hostname
 3. **Cert-Manager** — for TLS certificates
 4. **External DNS** — for automatic DNS management
-5. **Monitoring** — Prometheus + Grafana
-6. **Dashboard** — Headlamp
-7. **Custom Apps** — custom Helm charts
-8. **ArgoCD** — GitOps (last, as it may depend on others)
+5. **Istio** — service mesh (installs before apps that may use it)
+6. **Monitoring** — Prometheus + Grafana
+7. **Dashboard** — Headlamp
+8. **Custom Apps** — custom Helm charts
+9. **ArgoCD** — GitOps (last, as it may depend on others)
 
 ### Example
 
@@ -162,6 +163,7 @@ deploy-cluster upgrade [flags]
 | Ingress | Re-apply manifest (idempotent) |
 | Cert-Manager | Re-apply manifest (updates version if changed) |
 | External DNS | `helm upgrade` (idempotent) |
+| Istio | `istioctl install` (handles upgrades) |
 | Monitoring | `helm upgrade` (idempotent) |
 | Dashboard | `helm upgrade` (idempotent) |
 | Custom Apps | `helm upgrade --install` for each app |

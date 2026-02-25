@@ -47,12 +47,16 @@ deploy-cluster/
 │   │   │   └── externaldns.go   # External DNS plugin implementation
 │   │   ├── ingress/
 │   │   │   └── ingress.go       # Ingress plugin implementation
+│   │   ├── istio/
+│   │   │   └── istio.go         # Istio plugin implementation
 │   │   ├── monitoring/
 │   │   │   └── monitoring.go    # Monitoring plugin implementation
 │   │   └── storage/
 │   │       └── storage.go       # Storage plugin implementation
 │   ├── linter/
 │   │   └── linter.go            # Template validation and linting
+│   ├── templating/
+│   │   └── templating.go        # Go template processing for dynamic configs
 │   ├── snapshot/
 │   │   ├── snapshot.go          # Orchestration: Save/Restore/List/Delete
 │   │   ├── metadata.go          # Metadata struct + YAML serialization
@@ -108,6 +112,7 @@ Load .env → Load template.yaml → Create cluster (Provider) → Install plugi
    - **Ingress**: Applies NGINX or verifies Traefik
    - **Cert-Manager**: Applies cert-manager manifest
    - **External DNS**: Helm install/upgrade external-dns
+   - **Istio**: istioctl install with profile
    - **Monitoring**: Helm install/upgrade kube-prometheus-stack
    - **Dashboard**: Helm install/upgrade Headlamp
    - **Custom Apps**: Helm install/upgrade for each app
@@ -309,10 +314,12 @@ Resources are applied in dependency order with retry and exponential backoff for
 - [x] Ingress plugin (nginx for kind, traefik for k3d)
 - [x] Cert-manager plugin
 - [x] External DNS plugin (automatic DNS management)
+- [x] Istio plugin (service mesh with mTLS)
 - [x] Monitoring plugin (kube-prometheus-stack via Helm)
 - [x] Dashboard plugin (Headlamp via Helm)
 - [x] Custom apps plugin (arbitrary Helm charts)
 - [x] ArgoCD plugin with diff-based upgrade
+- [x] Templating system (Go templates)
 - [x] Unified Plugin interface
 - [x] Plugin Manager with parallel installation support
 - [x] `lint` command for template validation

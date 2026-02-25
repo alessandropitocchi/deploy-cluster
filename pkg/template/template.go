@@ -3,8 +3,10 @@ package template
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
+	"github.com/alepito/deploy-cluster/pkg/templating"
 	"gopkg.in/yaml.v3"
 )
 
@@ -15,6 +17,7 @@ var (
 	validMonitoringTypes = []string{"prometheus"}
 	validDashboardTypes  = []string{"headlamp"}
 	validExternalDNSProviders = []string{"cloudflare", "route53", "google", "azure", "digitalocean"}
+	validIstioProfiles   = []string{"default", "demo", "minimal", "empty", "preview", "ambient"}
 )
 
 type Template struct {
@@ -39,6 +42,7 @@ type PluginsTemplate struct {
 	Ingress     *IngressTemplate     `yaml:"ingress,omitempty"`
 	CertManager *CertManagerTemplate `yaml:"certManager,omitempty"`
 	ExternalDNS *ExternalDNSTemplate `yaml:"externalDNS,omitempty"`
+	Istio       *IstioTemplate       `yaml:"istio,omitempty"`
 	Monitoring  *MonitoringTemplate  `yaml:"monitoring,omitempty"`
 	Dashboard   *DashboardTemplate   `yaml:"dashboard,omitempty"`
 	CustomApps  []CustomAppTemplate  `yaml:"customApps,omitempty"`
@@ -106,6 +110,16 @@ type ExternalDNSTemplate struct {
 	Zone        string `yaml:"zone,omitempty"`        // DNS zone (e.g., example.com)
 	Credentials map[string]string `yaml:"credentials,omitempty"` // Provider-specific credentials
 	Source      string `yaml:"source,omitempty"`      // Source: ingress (default), service, both
+}
+
+type IstioTemplate struct {
+	Enabled         bool                   `yaml:"enabled"`
+	Version         string                 `yaml:"version,omitempty"`         // Istio version (default: 1.24.0)
+	Profile         string                 `yaml:"profile,omitempty"`         // Profile: default, demo, minimal, empty (default: default)
+	Revision        string                 `yaml:"revision,omitempty"`        // Revision for canary upgrades
+	IngressGateway  bool                   `yaml:"ingressGateway,omitempty"`  // Enable ingress gateway
+	EgressGateway   bool                   `yaml:"egressGateway,omitempty"`   // Enable egress gateway
+	Values          map[string]interface{} `yaml:"values,omitempty"`          // Additional Helm values
 }
 
 type MonitoringTemplate struct {
@@ -306,6 +320,21 @@ func (t *Template) Validate() error {
 		}
 	}
 
+	if istio := t.Plugins.Istio; istio != nil && istio.Enabled {
+		if istio.Profile != "" {
+			valid := false
+			for _, p := range validIstioProfiles {
+				if istio.Profile == p {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				errs = append(errs, fmt.Sprintf("plugins.istio.profile %q is not supported (valid: %s)", istio.Profile, strings.Join(validIstioProfiles, ", ")))
+			}
+		}
+	}
+
 	if mon := t.Plugins.Monitoring; mon != nil && mon.Enabled {
 		if mon.Type == "" {
 			errs = append(errs, "plugins.monitoring.type is required")
@@ -402,16 +431,39 @@ func (t *Template) Save(path string) error {
 
 // Load reads a template from a YAML file
 func Load(path string) (*Template, error) {
+	return LoadWithEnv(path, nil)
+}
+
+// LoadWithEnv reads a template from a YAML file with optional env files for templating.
+func LoadWithEnv(path string, envFiles []string) (*Template, error) {
+	// Check if file contains template expressions
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
+
+	// Process templating if needed
+	content := string(data)
+	if containsGoTemplate(content) {
+		processed, err := templating.ProcessTemplateFile(path, envFiles)
+		if err != nil {
+			return nil, fmt.Errorf("template processing failed: %w", err)
+		}
+		content = processed
+	}
+
 	var tmpl Template
-	if err := yaml.Unmarshal(data, &tmpl); err != nil {
+	if err := yaml.Unmarshal([]byte(content), &tmpl); err != nil {
 		return nil, err
 	}
 	if err := tmpl.Validate(); err != nil {
 		return nil, err
 	}
 	return &tmpl, nil
+}
+
+// containsGoTemplate checks if content contains Go template expressions.
+func containsGoTemplate(content string) bool {
+	re := regexp.MustCompile(`\{\{.*\}\}`)
+	return re.MatchString(content)
 }
