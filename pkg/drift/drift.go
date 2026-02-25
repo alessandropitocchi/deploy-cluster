@@ -11,8 +11,11 @@ import (
 	"github.com/alepito/deploy-cluster/pkg/template"
 )
 
-// execCommand is a package-level variable for creating exec.Cmd, replaceable in tests.
-var execCommand = exec.Command
+// cmdRunner is a function type for executing commands, replaceable in tests.
+type cmdRunner func(name string, arg ...string) *exec.Cmd
+
+// execCommand is the default command runner.
+var execCommand cmdRunner = exec.Command
 
 // ChangeType represents the type of drift change.
 type ChangeType string
@@ -589,6 +592,19 @@ func (d *Detector) detectArgoCDDrift(cfg *template.ArgoCDTemplate, kubecontext s
 		return changes, nil
 	}
 
+	// Check for repos in template but not in cluster
+	for _, repo := range cfg.Repos {
+		exists, _ := d.argocdRepoExists(kubecontext, repo.Name, namespace)
+		if !exists {
+			changes = append(changes, Change{
+				Type:     ChangeTypeRemove,
+				Plugin:   "argocd",
+				Resource: fmt.Sprintf("repository/%s", repo.Name),
+				Message:  fmt.Sprintf("ArgoCD repo %q is in template but not in cluster", repo.Name),
+			})
+		}
+	}
+
 	// Check for apps in template but not in cluster
 	for _, app := range cfg.Apps {
 		exists, _ := d.resourceExists(kubecontext, "application", app.Name, namespace)
@@ -627,6 +643,18 @@ func (d *Detector) detectOrphanArgoCD(kubecontext string) ([]Change, error) {
 }
 
 // Helper methods
+
+func (d *Detector) argocdRepoExists(kubecontext, name, namespace string) (bool, error) {
+	// ArgoCD repos are stored as secrets with label argocd.argoproj.io/secret-type=repository
+	cmd := execCommand("kubectl", "--context", kubecontext, "get", "secret", "-n", namespace,
+		"-l", "argocd.argoproj.io/secret-type=repository",
+		"-o", fmt.Sprintf("jsonpath={.items[?(@.metadata.name==\"%s\")].metadata.name}", name))
+	out, err := cmd.Output()
+	if err != nil {
+		return false, nil
+	}
+	return len(out) > 0 && string(out) == name, nil
+}
 
 func (d *Detector) resourceExists(kubecontext, resourceType, name, namespace string) (bool, error) {
 	cmd := execCommand("kubectl", "--context", kubecontext, "get", resourceType, name, "-n", namespace)
