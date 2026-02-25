@@ -8,6 +8,7 @@
 | [`lint`](#lint) | Validate template for errors and best practices |
 | [`create`](#create) | Create the cluster and install configured plugins |
 | [`upgrade`](#upgrade) | Update plugins on an existing cluster |
+| [`drift`](#drift) | Detect drift between cluster and template |
 | [`uninstall`](#uninstall) | Uninstall plugins from a cluster (keeps cluster) |
 | [`status`](#status) | Show cluster and plugin status |
 | [`destroy`](#destroy) | Destroy the cluster |
@@ -178,6 +179,66 @@ deploy-cluster upgrade --template template.yaml --dry-run
 # Apply
 deploy-cluster upgrade --template template.yaml
 ```
+
+---
+
+## `drift`
+
+Detects drift between the cluster's actual state and the desired state defined in the template. Identifies missing resources, orphan resources, and configuration differences.
+
+```bash
+deploy-cluster drift [flags]
+```
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-t, --template` | `template.yaml` | Template file |
+| `-e, --env` | `.env` | Environment file |
+| `--exit-error` | `false` | Exit with error code if drift detected |
+
+### Drift Types
+
+| Type | Description | Icon |
+|------|-------------|------|
+| **Missing** | In template but not in cluster | `-` |
+| **Orphan** | In cluster but not in template | `?` |
+| **Modified** | Different configuration | `~` |
+
+### Example
+
+```bash
+# Basic drift detection
+deploy-cluster drift
+
+# With specific template
+deploy-cluster drift --template production.yaml
+
+# Exit with error if drift detected (useful for CI/CD)
+deploy-cluster drift --exit-error
+```
+
+### Sample Output
+
+```
+Drift Detection Results:
+------------------------------------------------------------
+
+  Missing (in template, not in cluster):
+    - [storage] local-path-provisioner: Storage plugin is enabled but not installed
+
+  Orphans (in cluster, not in template):
+    ? [custom-apps] redis: Custom app "redis" is installed but not in template
+
+  Modified (drift detected):
+    ~ [monitoring] kube-prometheus-stack: Version drift: cluster=72.6.0, template=72.6.2
+
+------------------------------------------------------------
+Total: 3 drift items (1 missing, 1 modified, 1 orphans)
+```
+
+See [Drift Detection](drift.md) for detailed documentation.
 
 ---
 

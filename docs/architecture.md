@@ -15,6 +15,7 @@ deploy-cluster/
 │   ├── lint.go                  # lint command: validates template
 │   ├── create.go                # create command: creates cluster + plugins
 │   ├── upgrade.go               # upgrade command: updates plugins
+│   ├── drift.go                 # drift command: detect and history
 │   ├── uninstall.go             # uninstall command: removes plugins
 │   ├── destroy.go               # destroy command: destroys cluster
 │   ├── status.go                # status command: shows cluster status
@@ -57,6 +58,10 @@ deploy-cluster/
 │   │   └── linter.go            # Template validation and linting
 │   ├── templating/
 │   │   └── templating.go        # Go template processing for dynamic configs
+│   ├── drift/
+│   │   ├── detector.go          # Drift detection engine
+│   │   ├── report.go            # Drift report structures and formatting
+│   │   └── history.go           # Drift history management
 │   ├── snapshot/
 │   │   ├── snapshot.go          # Orchestration: Save/Restore/List/Delete
 │   │   ├── metadata.go          # Metadata struct + YAML serialization
@@ -127,6 +132,19 @@ Updates plugins on an existing cluster:
 3. **Upgrade plugins**: For each enabled plugin:
    - Most plugins: Re-apply configuration (idempotent)
    - ArgoCD: Diff-based update (adds new repos/apps, removes deleted ones)
+
+### `deploy-cluster drift detect`
+
+Detects drift between cluster state and template:
+
+1. **Load template**: Parses the `template.yaml`
+2. **Check cluster**: Verifies cluster exists
+3. **Detect drift**: For each enabled plugin:
+   - Check if plugin is installed (via `IsInstalled()`)
+   - Compare versions and configuration
+   - Identify orphan resources (installed but not in template)
+4. **Generate report**: Output results in text/json/yaml format
+5. **Save history**: Store report for drift tracking
 
 ### `deploy-cluster uninstall`
 
@@ -211,6 +229,42 @@ Checks include:
 - Ingress host uniqueness
 - Resource dependencies (ingress plugin required for ingress hosts)
 - Best practices (storage for multi-node, etc.)
+
+### Drift Detection
+
+The drift detection system (`pkg/drift/`) compares actual cluster state against the desired state defined in the template.
+
+**Components:**
+
+```go
+// Detector orchestrates drift detection
+type Detector struct {
+    kubecontext string
+    timeout     time.Duration
+    log         *logger.Logger
+}
+
+// DriftReport contains all detected differences
+type DriftReport struct {
+    ClusterName string
+    Timestamp   time.Time
+    Changes     []DriftChange     // Configuration differences
+    Orphans     []OrphanResource  // Installed but not in template
+    Missing     []MissingResource // In template but not installed
+    InSync      []string          // Matching resources
+    Summary     DriftSummary
+}
+```
+
+**Drift Types:**
+- **Missing**: Resource in template but not in cluster (e.g., plugin not installed)
+- **Orphan**: Resource in cluster but not in template (e.g., manually installed Helm release)
+- **Modified**: Resource exists but configuration differs (e.g., version mismatch)
+
+**Detection Methods:**
+- **Helm releases**: `helm list` + `helm get values` for version comparison
+- **Kubernetes resources**: `kubectl get` for namespace/deployment verification
+- **ArgoCD**: Special handling for repos/apps with diff-based comparison
 
 ## Configuration
 
@@ -324,6 +378,7 @@ Resources are applied in dependency order with retry and exponential backoff for
 - [x] Plugin Manager with parallel installation support
 - [x] `lint` command for template validation
 - [x] `upgrade` command for updating plugins on existing clusters
+- [x] `drift` command for drift detection
 - [x] `uninstall` command for removing plugins without destroying cluster
 - [x] `status` command for cluster and plugin status
 - [x] `switch` command for kubectl context switching

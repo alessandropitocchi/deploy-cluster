@@ -54,6 +54,7 @@ Several plugins support optional `ingress` sub-config to expose their UI (ArgoCD
 | `create` | Create cluster + install all enabled plugins |
 | `upgrade` | Update plugins on existing cluster (diff-based for ArgoCD repos/apps) |
 | `upgrade --dry-run` | Preview changes without applying |
+| `drift` | Detect drift between cluster and template |
 | `uninstall` | Uninstall plugins from cluster (keeps cluster) |
 | `status` | Show cluster and plugin status |
 | `destroy` | Delete cluster |
@@ -130,6 +131,7 @@ pkg/
     kind/                   # kind provider
     k3d/                    # k3d provider
   snapshot/                 # Snapshot system
+  drift/                    # Drift detection engine
   k8s/                      # Kubernetes helpers
   logger/                   # Structured logging
   retry/                    # Retry logic
@@ -149,6 +151,7 @@ pkg/
 - **customApps**: Inline `values` are written to temp files, `valuesFile` takes precedence over inline values
 - **Snapshot system**: Dynamic resource discovery, dependency-aware restore, resource sanitization
 - **Linter**: Comprehensive validation including best practices and dependency checking
+- **Drift Detection**: Compare cluster state against template to detect configuration drift, orphaned resources, and missing resources
 
 ### Testing
 Tests are colocated with source files (`*_test.go` in same package). Run with `go test ./...`.
@@ -159,6 +162,7 @@ Key test areas:
 - `pkg/linter/`: Lint checks, issue formatting
 - `pkg/provider/kind/` and `pkg/provider/k3d/`: Provider implementations
 - `pkg/snapshot/`: Metadata, discovery, export, restore, diff
+- `pkg/drift/`: Detection engine, report generation, history management
 
 ### Adding a New Plugin
 

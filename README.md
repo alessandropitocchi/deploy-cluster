@@ -35,6 +35,9 @@ go build -o deploy-cluster ./cmd/deploycluster
 # Update plugins without recreating the cluster
 ./deploy-cluster upgrade --template template.yaml
 
+# Detect drift between cluster and template
+./deploy-cluster drift --template template.yaml
+
 # Switch kubectl context between clusters
 ./deploy-cluster switch my-cluster
 
