@@ -1,12 +1,13 @@
 # deploy-cluster
 
-CLI tool for deploying local Kubernetes clusters with plugin support.
+CLI tool for deploying Kubernetes clusters with plugin support.
 
-Create clusters with configurable topology and automatically install components like storage, ingress, cert-manager, monitoring, dashboard, ArgoCD and custom Helm apps — all defined in a single template file.
+Create local clusters (kind/k3d) or deploy to existing clusters. Automatically install components like storage, ingress, cert-manager, monitoring, dashboard, ArgoCD and custom Helm apps — all defined in a single template file.
 
 ## Requirements
 
-- Go 1.21+ | Docker | [kind](https://kind.sigs.k8s.io/) | kubectl | [Helm](https://helm.sh/) 3.x
+- Go 1.21+ | Docker | kubectl | [Helm](https://helm.sh/) 3.x
+- For local clusters: [kind](https://kind.sigs.k8s.io/) or [k3d](https://k3d.io/)
 
 ## Installation
 
@@ -56,7 +57,9 @@ go build -o deploy-cluster ./cmd/deploycluster
 ./deploy-cluster destroy --template template.yaml
 ```
 
-## Configuration Example
+## Configuration Examples
+
+### Local Cluster (kind)
 
 ```yaml
 name: my-cluster
@@ -106,6 +109,28 @@ plugins:
       enabled: true
       host: argocd.localhost
 ```
+
+### Existing Cluster
+
+```yaml
+name: my-production-cluster
+provider:
+  type: existing
+  kubeconfig: ~/.kube/config
+  context: production
+
+plugins:
+  certManager:
+    enabled: true
+  monitoring:
+    enabled: true
+    type: prometheus
+    ingress:
+      enabled: true
+      host: grafana.mycompany.com
+```
+
+See [Existing Cluster Provider](docs/providers/existing.md) for more details.
 
 ## Available Plugins
 
@@ -162,4 +187,6 @@ Snapshots are stored at `~/.deploy-cluster/snapshots/<name>/` with one file per 
 | [Configuration](docs/configuration.md) | `template.yaml` file structure |
 | [Architecture](docs/architecture.md) | Project architecture and design |
 | [Provider: kind](docs/providers/kind.md) | kind provider details |
+| [Provider: k3d](docs/providers/k3d.md) | k3d provider details |
+| [Provider: existing](docs/providers/existing.md) | Existing cluster provider |
 | [Plugins](docs/plugins/) | Documentation for each plugin |

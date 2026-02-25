@@ -43,7 +43,7 @@ Use this command to verify GitOps compliance and detect manual changes.`,
 		}
 
 		// Get provider and check cluster exists
-		provider, err := getProvider(cfg.Provider.Type)
+		provider, err := getProviderFromTemplate(cfg)
 		if err != nil {
 			return err
 		}

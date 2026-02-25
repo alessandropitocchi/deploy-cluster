@@ -38,7 +38,7 @@ Use --dry-run to preview changes without applying them.`,
 		}
 
 		// Get provider and check cluster exists
-		provider, err := getProvider(cfg.Provider.Type)
+		provider, err := getProviderFromTemplate(cfg)
 		if err != nil {
 			return err
 		}

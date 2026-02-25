@@ -35,15 +35,24 @@ var createCmd = &cobra.Command{
 		log.Info("\n")
 		log.Info("Cluster: %s\n", cfg.Name)
 		log.Info("Provider: %s\n", cfg.Provider.Type)
-		log.Info("Control planes: %d\n", cfg.Cluster.ControlPlanes)
-		log.Info("Workers: %d\n", cfg.Cluster.Workers)
-		if cfg.Cluster.Version != "" {
-			log.Info("Kubernetes version: %s\n", cfg.Cluster.Version)
+		if cfg.Provider.Type != "existing" {
+			log.Info("Control planes: %d\n", cfg.Cluster.ControlPlanes)
+			log.Info("Workers: %d\n", cfg.Cluster.Workers)
+			if cfg.Cluster.Version != "" {
+				log.Info("Kubernetes version: %s\n", cfg.Cluster.Version)
+			}
+		} else {
+			if cfg.Provider.Kubeconfig != "" {
+				log.Info("Kubeconfig: %s\n", cfg.Provider.Kubeconfig)
+			}
+			if cfg.Provider.Context != "" {
+				log.Info("Context: %s\n", cfg.Provider.Context)
+			}
 		}
 		log.Info("\n")
 
 		// Get provider
-		provider, err := getProvider(cfg.Provider.Type)
+		provider, err := getProviderFromTemplate(cfg)
 		if err != nil {
 			return err
 		}

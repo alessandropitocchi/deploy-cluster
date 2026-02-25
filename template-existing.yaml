@@ -1,0 +1,52 @@
+# Example template for deploying plugins to an existing Kubernetes cluster
+# Use this when you have a cluster already created (e.g., EKS, GKE, AKS, or existing kind/k3d)
+
+name: my-existing-cluster
+provider:
+  type: existing
+  # Optional: path to kubeconfig (defaults to KUBECONFIG env var or ~/.kube/config)
+  # kubeconfig: ~/.kube/config
+  # Optional: context to use (defaults to current context)
+  # context: my-cluster-context
+
+# Cluster section is optional for existing clusters
+cluster:
+  controlPlanes: 1
+  workers: 0
+
+plugins:
+  storage:
+    enabled: true
+    type: local-path
+  
+  ingress:
+    enabled: true
+    type: nginx
+  
+  certManager:
+    enabled: true
+    version: v1.16.3
+  
+  monitoring:
+    enabled: true
+    type: prometheus
+    version: "72.6.2"
+    ingress:
+      enabled: true
+      host: grafana.example.com
+  
+  dashboard:
+    enabled: true
+    type: headlamp
+    version: "0.25.0"
+    ingress:
+      enabled: true
+      host: dashboard.example.com
+  
+  # Add your custom applications
+  customApps:
+    - name: my-app
+      chartName: oci://registry-1.docker.io/bitnamicharts/nginx
+      namespace: default
+      values:
+        replicaCount: 2

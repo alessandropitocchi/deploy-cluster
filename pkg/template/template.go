@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	validProviders       = []string{"kind", "k3d"}
+	validProviders       = []string{"kind", "k3d", "existing"}
 	validStorageTypes    = []string{"local-path"}
 	validIngressTypes    = []string{"nginx", "traefik"}
 	validMonitoringTypes = []string{"prometheus"}
@@ -28,7 +28,9 @@ type Template struct {
 }
 
 type ProviderTemplate struct {
-	Type string `yaml:"type"` // kind, k3d, etc.
+	Type       string `yaml:"type"`                 // kind, k3d, existing
+	Kubeconfig string `yaml:"kubeconfig,omitempty"` // Path to kubeconfig (for existing)
+	Context    string `yaml:"context,omitempty"`    // Kubectl context (for existing)
 }
 
 type ClusterTemplate struct {
@@ -247,12 +249,15 @@ func (t *Template) Validate() error {
 		}
 	}
 
-	if t.Cluster.ControlPlanes < 1 {
-		errs = append(errs, "cluster.controlPlanes must be at least 1")
-	}
+	// Cluster config is optional for existing clusters
+	if t.Provider.Type != "existing" {
+		if t.Cluster.ControlPlanes < 1 {
+			errs = append(errs, "cluster.controlPlanes must be at least 1")
+		}
 
-	if t.Cluster.Workers < 0 {
-		errs = append(errs, "cluster.workers cannot be negative")
+		if t.Cluster.Workers < 0 {
+			errs = append(errs, "cluster.workers cannot be negative")
+		}
 	}
 
 	if stor := t.Plugins.Storage; stor != nil && stor.Enabled {

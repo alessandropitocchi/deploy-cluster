@@ -44,7 +44,7 @@ The cluster itself is NOT destroyed — only the plugins are removed.`,
 		}
 
 		// Get provider and check cluster exists
-		provider, err := getProvider(cfg.Provider.Type)
+		provider, err := getProviderFromTemplate(cfg)
 		if err != nil {
 			return err
 		}

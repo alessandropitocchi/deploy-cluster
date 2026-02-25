@@ -30,7 +30,7 @@ var statusCmd = &cobra.Command{
 		}
 
 		// Check cluster existence
-		provider, err := getProvider(cfg.Provider.Type)
+		provider, err := getProviderFromTemplate(cfg)
 		if err != nil {
 			return err
 		}

@@ -48,7 +48,7 @@ Use --exclude-secrets to omit Secrets from the snapshot.`,
 		}
 
 		// Get provider
-		provider, err := getProvider(cfg.Provider.Type)
+		provider, err := getProviderFromTemplate(cfg)
 		if err != nil {
 			return err
 		}
@@ -96,7 +96,7 @@ Use --dry-run to preview what would be applied without making changes.`,
 		}
 
 		// Get provider
-		provider, err := getProvider(cfg.Provider.Type)
+		provider, err := getProviderFromTemplate(cfg)
 		if err != nil {
 			return err
 		}
@@ -188,7 +188,7 @@ Shows which resources would need to be restored and which already exist.`,
 		}
 
 		// Get provider
-		provider, err := getProvider(cfg.Provider.Type)
+		provider, err := getProviderFromTemplate(cfg)
 		if err != nil {
 			return err
 		}
