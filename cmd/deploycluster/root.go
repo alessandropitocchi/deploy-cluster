@@ -13,6 +13,7 @@ var (
 	verbose       bool
 	quiet         bool
 	globalTimeout time.Duration
+	Version       = "dev" // Set at build time with -ldflags
 )
 
 var rootCmd = &cobra.Command{
@@ -29,6 +30,11 @@ and plugin support (ArgoCD, storage, ingress).`,
 			return fmt.Errorf("--timeout must be a positive duration")
 		}
 		return nil
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("klastr version %s\n", Version)
+		fmt.Println("\nUsage: klastr [command]")
+		fmt.Println("\nRun 'klastr --help' for more information")
 	},
 }
 

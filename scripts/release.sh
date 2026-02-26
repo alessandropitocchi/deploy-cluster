@@ -38,7 +38,7 @@ for platform in "${PLATFORMS[@]}"; do
     echo -e "${BLUE}Building for ${GOOS}/${GOARCH}...${NC}"
     
     GOOS=$GOOS GOARCH=$GOARCH go build \
-        -ldflags "-s -w -X ${REPO}/cmd/deploycluster.Version=${VERSION}" \
+        -ldflags "-s -w -X main.Version=${VERSION}" \
         -o "dist/${BINARY_NAME}" \
         ./cmd/deploycluster
     

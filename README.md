@@ -11,8 +11,37 @@ Create local clusters (kind/k3d) or deploy to existing clusters. Automatically i
 
 ## Installation
 
+### macOS / Linux
+
+**Using the install script (recommended):**
+```bash
+curl -fsSL https://raw.githubusercontent.com/alessandropitocchi/deploy-cluster/main/install.sh | bash
+```
+
+**Or download manually from GitHub Releases:**
+```bash
+# Download latest release (replace v1.0.0 with the latest version)
+curl -LO https://github.com/alessandropitocchi/deploy-cluster/releases/latest/download/klastr_$(uname -s)_$(uname -m).tar.gz
+
+# Extract
+tar -xzf klastr_*.tar.gz
+
+# Move to PATH
+sudo mv klastr /usr/local/bin/
+```
+
+### Build from Source
+
 ```bash
 go build -o klastr ./cmd/deploycluster
+sudo mv klastr /usr/local/bin/
+```
+
+### Verify Installation
+
+```bash
+klastr --version
+klastr check
 ```
 
 ## Quick Start
@@ -240,6 +269,42 @@ klastr snapshot restore before-upgrade --template template.yaml
 Snapshots are stored at `~/.klastr/snapshots/<name>/` with one file per resource. The restore follows a dependency-aware order: CRDs → Namespaces → cluster-scoped → namespaced resources.
 
 > **Note:** Snapshots may contain Kubernetes Secrets in plain text.
+
+## Development
+
+### Building from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/alessandropitocchi/deploy-cluster.git
+cd deploy-cluster
+
+# Build
+make build
+
+# Run tests
+make test-short
+
+# Create a release (requires git tag)
+git tag v1.0.0
+git push origin v1.0.0
+# GitHub Actions will automatically create the release with binaries
+```
+
+### Project Structure
+
+```
+.
+├── cmd/deploycluster/    # CLI commands
+├── pkg/
+│   ├── plugin/          # Plugin implementations
+│   ├── provider/        # Cluster providers (kind, k3d)
+│   ├── template/        # Configuration loading
+│   └── env/             # Multi-environment support
+├── docs/                # Documentation
+├── examples/            # Example configurations
+└── e2e/                 # End-to-end tests
+```
 
 ## Documentation
 
