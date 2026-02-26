@@ -1,0 +1,5 @@
+# Kubernetes dashboard configuration
+plugins:
+  dashboard:
+    enabled: true
+    type: headlamp

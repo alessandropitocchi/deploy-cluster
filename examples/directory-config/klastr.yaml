@@ -1,0 +1,12 @@
+# Main klastr configuration
+# This is the primary config file that defines the cluster basics
+
+name: my-cluster
+
+provider:
+  type: kind  # kind, k3d, or existing
+
+cluster:
+  version: "v1.31.0"
+  controlPlanes: 1
+  workers: 2

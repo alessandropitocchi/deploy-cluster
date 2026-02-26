@@ -14,7 +14,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Plugins**: Modular components installed on clusters. Each plugin implements the unified `Plugin` interface in `pkg/plugin/plugin.go`. Implemented: **storage** (local-path-provisioner), **ingress** (nginx or traefik), **cert-manager**, **external-dns** (automatic DNS management), **istio** (service mesh), **monitoring** (kube-prometheus-stack via Helm), **dashboard** (Headlamp via Helm), **customApps** (arbitrary Helm charts), **ArgoCD**.
 - **Plugin Manager**: Orchestrates plugin installation in `pkg/plugin/manager.go`. Handles install order, parallel execution, and result tracking.
 - **Linter**: Validates templates for errors and best practices in `pkg/linter/linter.go`.
-- **Template**: Single `template.yaml` defines cluster topology + all plugins. Parsed and validated in `pkg/template/`.
+- **Template**: Single `template.yaml` or directory structure defines cluster topology + all plugins. Parsed and validated in `pkg/template/`.
+- **Directory Loader**: `pkg/template/template.go` contains `Loader` struct that loads and merges multiple YAML files from a directory structure.
 
 ### Plugin Installation Order
 
@@ -49,7 +50,7 @@ Several plugins support optional `ingress` sub-config to expose their UI (ArgoCD
 
 | Command | Description |
 |---------|-------------|
-| `init` | Generate starter `template.yaml` via interactive wizard |
+| `init` | Generate starter `template.yaml` or directory structure |
 | `lint` | Validate template for errors and best practices |
 | `create` | Create cluster + install all enabled plugins |
 | `upgrade` | Update plugins on existing cluster (diff-based for ArgoCD repos/apps) |
@@ -147,6 +148,8 @@ pkg/
 - **ArgoCD Upgrade**: Diff-based - applies all desired repos/apps, removes those no longer in template
 - **ArgoCD insecure mode**: Uses `argocd-cmd-params-cm` ConfigMap (not container args patching)
 - **Template validation**: `Validate()` runs inside `Load()` — invalid templates fail early
+- **Directory loading**: `Loader` struct supports loading from single file or directory with merge support
+- **Config merging**: Directory configs merge in priority order; later files override earlier ones for simple fields, lists are additive
 - **Helm-based plugins**: Use `helm upgrade --install` for idempotency
 - **customApps**: Inline `values` are written to temp files, `valuesFile` takes precedence over inline values
 - **Snapshot system**: Dynamic resource discovery, dependency-aware restore, resource sanitization

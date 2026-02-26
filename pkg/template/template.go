@@ -3,7 +3,9 @@ package template
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/alessandropitocchi/deploy-cluster/pkg/templating"
@@ -444,9 +446,12 @@ func (t *Template) Save(path string) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// Load reads a template from a YAML file
+// Load reads a template from a YAML file or directory.
+// If path is a file, loads it as a single template.
+// If path is a directory, loads configuration from multiple files.
 func Load(path string) (*Template, error) {
-	return LoadWithEnv(path, nil)
+	loader := NewLoader()
+	return loader.Load(path)
 }
 
 // LoadWithEnv reads a template from a YAML file with optional env files for templating.
@@ -481,4 +486,211 @@ func LoadWithEnv(path string, envFiles []string) (*Template, error) {
 func containsGoTemplate(content string) bool {
 	re := regexp.MustCompile(`\{\{.*\}\}`)
 	return re.MatchString(content)
+}
+
+// LoadFromDirectory loads configuration from a directory structure.
+// It merges multiple YAML files: klastr.yaml, provider.yaml, cluster.yaml, plugins/*.yaml, apps/*.yaml
+func LoadFromDirectory(dir string, envFiles []string) (*Template, error) {
+	loader := NewLoader()
+	loader.SetEnvFiles(envFiles)
+	return loader.LoadFromDirectory(dir)
+}
+
+// Loader handles loading configuration from files or directories.
+type Loader struct {
+	envFiles []string
+}
+
+// NewLoader creates a new configuration loader.
+func NewLoader() *Loader {
+	return &Loader{}
+}
+
+// SetEnvFiles sets the environment files for template processing.
+func (l *Loader) SetEnvFiles(files []string) {
+	l.envFiles = files
+}
+
+// Load loads configuration from a file or directory.
+func (l *Loader) Load(path string) (*Template, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("cannot access path %s: %w", path, err)
+	}
+
+	if info.IsDir() {
+		return l.LoadFromDirectory(path)
+	}
+	return l.LoadFromFile(path)
+}
+
+// LoadFromFile loads configuration from a single YAML file.
+func (l *Loader) LoadFromFile(path string) (*Template, error) {
+	return l.loadFromFileInternal(path, true)
+}
+
+// loadFromFileInternal loads a file with optional validation.
+func (l *Loader) loadFromFileInternal(path string, validate bool) (*Template, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	content := string(data)
+	if containsGoTemplate(content) {
+		processed, err := templating.ProcessTemplateFile(path, l.envFiles)
+		if err != nil {
+			return nil, fmt.Errorf("template processing failed: %w", err)
+		}
+		content = processed
+	}
+
+	var tmpl Template
+	if err := yaml.Unmarshal([]byte(content), &tmpl); err != nil {
+		return nil, err
+	}
+	if validate {
+		if err := tmpl.Validate(); err != nil {
+			return nil, err
+		}
+	}
+	return &tmpl, nil
+}
+
+// LoadFromDirectory loads configuration from a directory structure.
+// It merges multiple YAML files in priority order.
+func (l *Loader) LoadFromDirectory(dir string) (*Template, error) {
+	// Priority order for loading
+	files := []string{}
+
+	// 1. Main config files
+	mainFiles := []string{"klastr.yaml", "provider.yaml", "cluster.yaml"}
+	for _, f := range mainFiles {
+		path := filepath.Join(dir, f)
+		if _, err := os.Stat(path); err == nil {
+			files = append(files, path)
+		}
+	}
+
+	// 2. Plugin configs
+	pluginsDir := filepath.Join(dir, "plugins")
+	if pluginFiles, err := l.findYAMLFiles(pluginsDir); err == nil {
+		files = append(files, pluginFiles...)
+	}
+
+	// 3. App configs
+	appsDir := filepath.Join(dir, "apps")
+	if appFiles, err := l.findYAMLFiles(appsDir); err == nil {
+		files = append(files, appFiles...)
+	}
+
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no YAML configuration files found in directory: %s", dir)
+	}
+
+	// Load and merge all files (without individual validation)
+	var merged Template
+	for _, f := range files {
+		tmpl, err := l.loadFromFileInternal(f, false)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load %s: %w", f, err)
+		}
+		l.mergeTemplates(&merged, tmpl)
+	}
+
+	if err := merged.Validate(); err != nil {
+		return nil, err
+	}
+
+	return &merged, nil
+}
+
+// findYAMLFiles finds all YAML files in a directory, sorted alphabetically.
+func (l *Loader) findYAMLFiles(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var files []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasSuffix(name, ".yaml") || strings.HasSuffix(name, ".yml") {
+			files = append(files, filepath.Join(dir, name))
+		}
+	}
+
+	sort.Strings(files)
+	return files, nil
+}
+
+// mergeTemplates merges overlay template into base template.
+// Later files override earlier ones for simple fields.
+func (l *Loader) mergeTemplates(base, overlay *Template) {
+	// Merge name (overlay wins if non-empty)
+	if overlay.Name != "" {
+		base.Name = overlay.Name
+	}
+
+	// Merge provider
+	if overlay.Provider.Type != "" {
+		base.Provider.Type = overlay.Provider.Type
+	}
+	if overlay.Provider.Kubeconfig != "" {
+		base.Provider.Kubeconfig = overlay.Provider.Kubeconfig
+	}
+	if overlay.Provider.Context != "" {
+		base.Provider.Context = overlay.Provider.Context
+	}
+
+	// Merge cluster
+	if overlay.Cluster.Version != "" {
+		base.Cluster.Version = overlay.Cluster.Version
+	}
+	if overlay.Cluster.ControlPlanes > 0 {
+		base.Cluster.ControlPlanes = overlay.Cluster.ControlPlanes
+	}
+	if overlay.Cluster.Workers > 0 {
+		base.Cluster.Workers = overlay.Cluster.Workers
+	}
+
+	// Merge plugins (overlay wins if specified)
+	if overlay.Plugins.Storage != nil && overlay.Plugins.Storage.Enabled {
+		base.Plugins.Storage = overlay.Plugins.Storage
+	}
+	if overlay.Plugins.Ingress != nil && overlay.Plugins.Ingress.Enabled {
+		base.Plugins.Ingress = overlay.Plugins.Ingress
+	}
+	if overlay.Plugins.Monitoring != nil && overlay.Plugins.Monitoring.Enabled {
+		base.Plugins.Monitoring = overlay.Plugins.Monitoring
+	}
+	if overlay.Plugins.Dashboard != nil && overlay.Plugins.Dashboard.Enabled {
+		base.Plugins.Dashboard = overlay.Plugins.Dashboard
+	}
+	if overlay.Plugins.CertManager != nil && overlay.Plugins.CertManager.Enabled {
+		base.Plugins.CertManager = overlay.Plugins.CertManager
+	}
+	if overlay.Plugins.ExternalDNS != nil && overlay.Plugins.ExternalDNS.Enabled {
+		base.Plugins.ExternalDNS = overlay.Plugins.ExternalDNS
+	}
+	if overlay.Plugins.Istio != nil && overlay.Plugins.Istio.Enabled {
+		base.Plugins.Istio = overlay.Plugins.Istio
+	}
+	if overlay.Plugins.ArgoCD != nil && overlay.Plugins.ArgoCD.Enabled {
+		base.Plugins.ArgoCD = overlay.Plugins.ArgoCD
+	}
+
+	// Merge custom apps (additive merge)
+	base.Plugins.CustomApps = append(base.Plugins.CustomApps, overlay.Plugins.CustomApps...)
+
+	// Merge snapshot config (overlay wins if enabled)
+	if overlay.Snapshot != nil && overlay.Snapshot.Enabled {
+		base.Snapshot = overlay.Snapshot
+	}
 }

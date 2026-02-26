@@ -1,0 +1,9 @@
+# External DNS configuration (example with Cloudflare)
+plugins:
+  externalDNS:
+    enabled: false  # Set to true and configure credentials to enable
+    version: "1.15.0"
+    provider: cloudflare
+    zone: example.com
+    # Credentials should be set via environment variables:
+    # CF_API_TOKEN or CF_API_KEY + CF_API_EMAIL

@@ -21,14 +21,19 @@ go build -o klastr ./cmd/deploycluster
 # Check prerequisites
 ./klastr check
 
-# Interactive wizard to generate the template
+# Generate a single template file
 ./klastr init
+
+# Or generate a directory structure (recommended for complex setups)
+./klastr init --dir --output my-cluster/
 
 # Validate the template before creating
 ./klastr lint --template template.yaml
+# Or for directory: ./klastr lint --template my-cluster/
 
 # Create the cluster with all configured plugins
 ./klastr run --template template.yaml
+# Or for directory: ./klastr run --template my-cluster/
 
 # Check status
 ./klastr status --template template.yaml
@@ -131,6 +136,42 @@ plugins:
 ```
 
 See [Existing Cluster Provider](docs/providers/existing.md) for more details.
+
+## Directory-Based Configuration
+
+For complex setups, you can organize your configuration across multiple files instead of a single `template.yaml`:
+
+```bash
+# Generate a directory structure
+./klastr init --dir --output my-cluster/
+```
+
+This creates:
+```
+my-cluster/
+├── klastr.yaml          # Main config (provider, cluster)
+├── plugins/
+│   ├── storage.yaml
+│   ├── ingress.yaml
+│   ├── cert-manager.yaml
+│   └── ...
+├── apps/                # Custom application configs
+├── .env.example         # Environment variables template
+└── README.md
+```
+
+**Benefits:**
+- Better organization for complex configurations
+- Easier to manage with Git (clearer diffs)
+- Team members can work on different plugins independently
+- Environment-specific overlays
+
+**Loading order:**
+1. `klastr.yaml` - Main configuration
+2. `plugins/*.yaml` - Plugin configs (alphabetical)
+3. `apps/*.yaml` - Custom apps (alphabetical)
+
+Later files override earlier ones for simple fields. Lists (like custom apps) are additive.
 
 ## Available Plugins
 

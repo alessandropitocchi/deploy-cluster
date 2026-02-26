@@ -1,0 +1,5 @@
+# Ingress controller configuration
+plugins:
+  ingress:
+    enabled: true
+    type: nginx

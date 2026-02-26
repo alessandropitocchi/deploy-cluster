@@ -1,0 +1,12 @@
+# ArgoCD configuration
+plugins:
+  argocd:
+    enabled: true
+    namespace: argocd
+    version: v2.13.0
+    ingress:
+      enabled: true
+      host: argocd.localhost
+      tls: false
+    repos: []
+    apps: []

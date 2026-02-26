@@ -1,0 +1,5 @@
+# Storage plugin configuration
+plugins:
+  storage:
+    enabled: true
+    type: local-path

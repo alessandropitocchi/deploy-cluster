@@ -1,0 +1,5 @@
+# Certificate manager configuration
+plugins:
+  certManager:
+    enabled: true
+    version: v1.16.3
