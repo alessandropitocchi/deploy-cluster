@@ -84,14 +84,14 @@ func cleanupCluster(t *testing.T, name string) {
 	defer cancel()
 	
 	cmd := exec.CommandContext(ctx, klastrBinary(), "destroy", "--name", name)
-	cmd.Run() // Ignore error
+	_ = cmd.Run() // Ignore error - cluster might not exist
 	
 	// Also try with kind directly as fallback
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel2()
 	
 	cmd2 := exec.CommandContext(ctx2, "kind", "delete", "cluster", "--name", name)
-	cmd2.Run()
+	_ = cmd2.Run() // Ignore error - cluster might not exist
 }
 
 // waitForClusterReady waits for cluster to be ready

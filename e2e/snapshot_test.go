@@ -56,8 +56,8 @@ plugins:
 	snapshotName := "e2e-test-snapshot"
 
 	t.Run("SaveSnapshot", func(t *testing.T) {
-		// Cleanup any existing snapshot
-		runKlastr(t, "snapshot", "delete", snapshotName)
+		// Cleanup any existing snapshot (ignore error if doesn't exist)
+		_, _ = runKlastr(t, "snapshot", "delete", snapshotName)
 
 		output, err := runKlastr(t, "snapshot", "save", snapshotName, "-f", templateFile)
 		if err != nil {
@@ -152,8 +152,8 @@ cluster:
 		t.Fatalf("Failed to save snapshot: %v\nOutput: %s", err, output)
 	}
 
-	// Cleanup
-	runKlastr(t, "snapshot", "delete", snapshotName)
+	// Cleanup (ignore error)
+	_, _ = runKlastr(t, "snapshot", "delete", snapshotName)
 }
 
 
