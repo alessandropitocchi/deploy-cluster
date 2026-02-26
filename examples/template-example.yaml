@@ -91,7 +91,7 @@ plugins:
     enabled: true
     profile: default  # Options: default, demo, minimal, ambient
     ingressGateway: true  # Deploy ingress gateway
-    version: "1.24.0"
+    version: "1.29.0"
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Monitoring: Prometheus + Grafana stack

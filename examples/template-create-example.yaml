@@ -1,0 +1,59 @@
+name: testlab
+provider:
+    type: kind
+cluster:
+    controlPlanes: 1
+    workers: 1
+    version: v1.31.0
+plugins:
+    storage:
+        enabled: false
+        type: local-path
+    ingress:
+        enabled: false
+        type: nginx
+    certManager:
+        enabled: true
+        version: v1.16.3
+    monitoring:
+        enabled: false
+        type: prometheus
+        ingress:
+            enabled: true
+            host: grafana.localhost
+    dashboard:
+        enabled: false
+        type: headlamp
+        ingress:
+            enabled: true
+            host: headlamp.localhost
+    argocd:
+        enabled: true
+        namespace: argocd
+        version: stable
+        ingress:
+            enabled: false
+            host: argocd.localhost
+        repos:
+        - name: app-repo
+          url: git@git.elmec.com:PITOCCHI/test-argo.git
+          type: git
+          sshKeyFile: ~/.ssh/id_ed25519
+        apps:
+        - name: application-bootstrap
+          namespace: argocd
+          repoURL: git@git.elmec.com:PITOCCHI/test-argo.git
+          targetRevision: main
+          path: argocd
+          autoSync: true 
+    # customApps:
+    #     - name: metrics-server
+    #       namespace: kube-system
+    #       chartRepo: https://kubernetes-sigs.github.io/metrics-server/
+    #       chartName: metrics-server
+    #       version: 3.13.0
+    #       values:
+    #         args:
+    #         - --kubelet-insecure-tls
+        
+

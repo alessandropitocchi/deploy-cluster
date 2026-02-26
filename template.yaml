@@ -1,59 +1,209 @@
-name: testlab
-provider:
-    type: kind
-cluster:
-    controlPlanes: 1
-    workers: 1
-    version: v1.31.0
-plugins:
-    storage:
-        enabled: false
-        type: local-path
-    ingress:
-        enabled: false
-        type: nginx
-    certManager:
-        enabled: true
-        version: v1.16.3
-    monitoring:
-        enabled: false
-        type: prometheus
-        ingress:
-            enabled: true
-            host: grafana.localhost
-    dashboard:
-        enabled: false
-        type: headlamp
-        ingress:
-            enabled: true
-            host: headlamp.localhost
-    argocd:
-        enabled: true
-        namespace: argocd
-        version: stable
-        ingress:
-            enabled: false
-            host: argocd.localhost
-        repos:
-        - name: app-repo
-          url: git@git.elmec.com:PITOCCHI/test-argo.git
-          type: git
-          sshKeyFile: ~/.ssh/id_ed25519
-        apps:
-        - name: application-bootstrap
-          namespace: argocd
-          repoURL: git@git.elmec.com:PITOCCHI/test-argo.git
-          targetRevision: main
-          path: argocd
-          autoSync: true 
-    # customApps:
-    #     - name: metrics-server
-    #       namespace: kube-system
-    #       chartRepo: https://kubernetes-sigs.github.io/metrics-server/
-    #       chartName: metrics-server
-    #       version: 3.13.0
-    #       values:
-    #         args:
-    #         - --kubelet-insecure-tls
-        
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                     deploy-cluster Configuration Template                    ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+#
+# This is a starter template with all available options documented.
+# All plugins are commented out - uncomment the ones you want to enable.
+#
+# Quick Start:
+#   1. Edit this file to customize your cluster
+#   2. Validate:  deploy-cluster lint --template template.yaml
+#   3. Create:    deploy-cluster create --template template.yaml
+#   4. Upgrade:   deploy-cluster upgrade --template template.yaml
+#
+# Documentation: https://github.com/alessandropitocchi/deploy-cluster#readme
+#
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Cluster Metadata
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: my-cluster  # Cluster name (used for kubecontext)
+
+# Provider: kind, k3d, or existing
+#   - kind:     Local clusters in Docker (requires kind)
+#   - k3d:      Lightweight k3s clusters (requires k3d)
+#   - existing: Use an existing cluster (EKS, GKE, AKS, etc.)
+provider:
+  type: kind
+  # kubeconfig: ~/.kube/config  # Optional: for 'existing' provider
+  # context: production         # Optional: kubectl context for 'existing' provider
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Cluster Topology (ignored for 'existing' provider)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+cluster:
+  controlPlanes: 1  # Number of control plane nodes (odd numbers recommended: 1, 3, 5)
+  workers: 2        # Number of worker nodes (0 = workloads run on control planes)
+  version: "v1.31.0"  # Kubernetes version (e.g., v1.31.0, v1.30.0)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Plugins Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+# Uncomment the plugins you want to enable and customize their settings
+
+plugins:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Storage: Dynamic volume provisioning
+  # Required for: PVCs, databases, stateful applications
+  # ─────────────────────────────────────────────────────────────────────────────
+  # storage:
+  #   enabled: true
+  #   type: local-path  # Only option currently available
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Ingress: HTTP/HTTPS routing and load balancing
+  # Required for: Exposing services via hostnames
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ingress:
+  #   enabled: true
+  #   type: nginx    # For kind provider
+  #   # type: traefik  # For k3d provider (uses built-in Traefik)
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Cert-Manager: Automatic TLS certificate management
+  # Required for: HTTPS certificates, Let's Encrypt integration
+  # ─────────────────────────────────────────────────────────────────────────────
+  # certManager:
+  #   enabled: true
+  #   version: v1.16.3  # Cert-manager version
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # External DNS: Automatic DNS record management
+  # Required for: Automatic DNS updates when services change
+  # ─────────────────────────────────────────────────────────────────────────────
+  # externalDNS:
+  #   enabled: true
+  #   provider: cloudflare  # Options: cloudflare, route53, google, azure, digitalocean
+  #   zone: example.com     # DNS zone to manage
+  #   credentials:
+  #     apiToken: ${CF_API_TOKEN}  # Use env var - see bottom of file
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Istio: Service mesh with mTLS, traffic management, and observability
+  # Features: Mutual TLS, traffic routing, canary deployments
+  # ─────────────────────────────────────────────────────────────────────────────
+  # istio:
+  #   enabled: true
+  #   profile: default  # Options: default, demo, minimal, ambient
+  #   ingressGateway: true  # Deploy ingress gateway
+  #   version: "1.24.0"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Monitoring: Prometheus + Grafana stack
+  # Includes: Metrics collection, dashboards, alerting
+  # ─────────────────────────────────────────────────────────────────────────────
+  # monitoring:
+  #   enabled: true
+  #   type: prometheus
+  #   version: "72.6.2"  # kube-prometheus-stack chart version
+  #   # Optional: expose Grafana via ingress
+  #   # ingress:
+  #   #   enabled: true
+  #   #   host: grafana.localhost
+  #   #   # Default credentials: admin / prom-operator
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Dashboard: Headlamp - Modern Kubernetes Web UI
+  # Features: Pod logs, resource editing, cluster overview
+  # ─────────────────────────────────────────────────────────────────────────────
+  # dashboard:
+  #   enabled: true
+  #   type: headlamp
+  #   version: "0.25.0"
+  #   # Optional: expose Headlamp via ingress
+  #   # ingress:
+  #   #   enabled: true
+  #   #   host: headlamp.localhost
+  #   #   # Get token: kubectl create token headlamp -n headlamp
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ArgoCD: GitOps continuous delivery
+  # Features: Declarative app deployment, auto-sync, rollback
+  # ─────────────────────────────────────────────────────────────────────────────
+  # argocd:
+  #   enabled: true
+  #   namespace: argocd
+  #   version: stable  # Or specific version like "v2.12.0"
+  #   # Optional: expose ArgoCD via ingress
+  #   # ingress:
+  #   #   enabled: true
+  #   #   host: argocd.localhost
+  #   #   # Get password: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+  #   #
+  #   # Git repositories to configure
+  #   # repos:
+  #   #   - name: my-repo
+  #   #     url: https://github.com/myorg/myrepo
+  #   #     type: git
+  #   #     # For private repos, use one of:
+  #   #     # sshKeyFile: ~/.ssh/id_ed25519
+  #   #     # sshKeyEnv: GIT_SSH_KEY
+  #   #
+  #   # Applications to create
+  #   # apps:
+  #   #   - name: my-app
+  #   #     repo: my-repo
+  #   #     path: k8s/overlays/dev
+  #   #     namespace: default
+  #   #     targetRevision: main  # Git branch/tag
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Custom Apps: Deploy your own Helm charts
+  # Use for: Your applications, third-party charts
+  # ─────────────────────────────────────────────────────────────────────────────
+  # customApps:
+  #   - name: my-app
+  #     chartName: ./charts/my-app  # Local path
+  #     # chartName: oci://registry-1.docker.io/bitnamicharts/nginx  # OCI registry
+  #     # chartName: nginx  # From chart repo (requires chartRepo)
+  #     # chartRepo: https://charts.bitnami.com/bitnami
+  #     namespace: default
+  #     version: "1.0.0"  # Chart version (optional)
+  #     values:           # Inline Helm values (optional)
+  #       replicaCount: 2
+  #       service:
+  #         type: ClusterIP
+  #     # valuesFile: values.yaml  # External values file (optional, takes precedence)
+  #     # Optional: expose via ingress
+  #     # ingress:
+  #     #   enabled: true
+  #     #   host: myapp.localhost
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # S3 Snapshot Storage: Backup snapshots to S3
+  # Use for: Disaster recovery, cross-region backup, long-term retention
+  # ─────────────────────────────────────────────────────────────────────────────
+  # snapshot:
+  #   enabled: true
+  #   bucket: my-k8s-backups           # S3 bucket name
+  #   prefix: clusters/my-cluster/     # Optional: key prefix
+  #   region: us-east-1                # Optional: AWS region (defaults to AWS_REGION)
+  #   # endpoint: http://localhost:9000  # Optional: for MinIO/S3-compatible
+  #   #
+  #   # AWS credentials can be provided via:
+  #   # - Environment variables: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+  #   # - IAM roles (when running on AWS)
+  #   # - ~/.aws/credentials file
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Environment Variables & Secrets
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Create a .env file in the same directory as this template for secrets.
+# DO NOT commit the .env file to git!
+#
+# Example .env file:
+#   # Cloudflare API token for External DNS
+#   CF_API_TOKEN=your-cloudflare-token
+#
+#   # AWS credentials for Route53
+#   AWS_ACCESS_KEY_ID=your-aws-key
+#   AWS_SECRET_ACCESS_KEY=your-aws-secret
+#
+#   # Git SSH key for ArgoCD private repos
+#   GIT_SSH_KEY=-----BEGIN OPENSSH PRIVATE KEY-----
+#
+# Reference env vars in this template with ${VAR_NAME} syntax
