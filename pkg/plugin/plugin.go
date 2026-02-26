@@ -4,8 +4,8 @@ package plugin
 import (
 	"fmt"
 
-	"github.com/alepito/deploy-cluster/pkg/logger"
-	"github.com/alepito/deploy-cluster/pkg/template"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/logger"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/template"
 )
 
 // Plugin is the unified interface that all plugins must implement.

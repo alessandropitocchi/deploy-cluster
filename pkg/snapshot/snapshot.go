@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/alepito/deploy-cluster/pkg/logger"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/logger"
 )
 
 // snapshotsDir returns the base directory for all snapshots.

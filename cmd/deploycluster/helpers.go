@@ -3,11 +3,11 @@ package main
 import (
 	"fmt"
 
-	"github.com/alepito/deploy-cluster/pkg/provider"
-	"github.com/alepito/deploy-cluster/pkg/provider/existing"
-	"github.com/alepito/deploy-cluster/pkg/provider/k3d"
-	"github.com/alepito/deploy-cluster/pkg/provider/kind"
-	"github.com/alepito/deploy-cluster/pkg/template"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/provider"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/provider/existing"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/provider/k3d"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/provider/kind"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/template"
 )
 
 func getProvider(providerType string) (provider.Provider, error) {

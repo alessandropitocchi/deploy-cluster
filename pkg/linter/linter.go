@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/alepito/deploy-cluster/pkg/template"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/template"
 )
 
 // Severity represents the severity level of a lint issue.

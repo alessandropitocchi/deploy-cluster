@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/alepito/deploy-cluster/pkg/plugin"
-	"github.com/alepito/deploy-cluster/pkg/template"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/plugin"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/template"
 )
 
 func TestInstallPlugins_AllDisabled(t *testing.T) {

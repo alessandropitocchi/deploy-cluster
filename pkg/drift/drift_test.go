@@ -3,8 +3,8 @@ package drift
 import (
 	"testing"
 
-	"github.com/alepito/deploy-cluster/pkg/logger"
-	"github.com/alepito/deploy-cluster/pkg/template"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/logger"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/template"
 )
 
 // TestNewDetector tests the creation of a new detector

@@ -7,8 +7,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/alepito/deploy-cluster/pkg/logger"
-	"github.com/alepito/deploy-cluster/pkg/template"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/logger"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/template"
 )
 
 // cmdRunner is a function type for executing commands, replaceable in tests.

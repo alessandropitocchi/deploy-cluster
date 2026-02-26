@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alepito/deploy-cluster/pkg/logger"
-	"github.com/alepito/deploy-cluster/pkg/retry"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/logger"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/retry"
 )
 
 // RestoreOptions configures the restore operation.

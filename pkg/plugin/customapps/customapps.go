@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alepito/deploy-cluster/pkg/k8s"
-	"github.com/alepito/deploy-cluster/pkg/logger"
-	"github.com/alepito/deploy-cluster/pkg/retry"
-	"github.com/alepito/deploy-cluster/pkg/template"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/k8s"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/logger"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/retry"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/template"
 	"gopkg.in/yaml.v3"
 )
 

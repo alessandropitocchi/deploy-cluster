@@ -3,7 +3,7 @@ package k3d
 import (
 	"testing"
 
-	"github.com/alepito/deploy-cluster/pkg/template"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/template"
 )
 
 func TestGenerateK3dConfig_SingleNode(t *testing.T) {

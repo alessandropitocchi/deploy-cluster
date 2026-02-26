@@ -3,7 +3,7 @@ package kind
 import (
 	"testing"
 
-	"github.com/alepito/deploy-cluster/pkg/template"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/template"
 )
 
 func TestGenerateKindConfig_SingleNode(t *testing.T) {

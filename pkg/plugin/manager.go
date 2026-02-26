@@ -6,7 +6,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/alepito/deploy-cluster/pkg/logger"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/logger"
 )
 
 // Manager orchestrates plugin operations.

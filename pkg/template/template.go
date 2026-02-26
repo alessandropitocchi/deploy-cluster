@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/alepito/deploy-cluster/pkg/templating"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/templating"
 	"gopkg.in/yaml.v3"
 )
 

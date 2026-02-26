@@ -7,7 +7,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/alepito/deploy-cluster/pkg/logger"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/logger"
 )
 
 func TestRestoreSnapshot_DirectoryNotFound(t *testing.T) {

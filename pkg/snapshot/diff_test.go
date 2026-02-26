@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/alepito/deploy-cluster/pkg/logger"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/logger"
 )
 
 func writeTestFile(t *testing.T, path string, res map[string]interface{}) {

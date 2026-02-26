@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/alepito/deploy-cluster/pkg/drift"
-	"github.com/alepito/deploy-cluster/pkg/logger"
-	"github.com/alepito/deploy-cluster/pkg/template"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/drift"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/logger"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/template"
 	"github.com/spf13/cobra"
 )
 

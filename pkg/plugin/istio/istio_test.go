@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alepito/deploy-cluster/pkg/logger"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/logger"
 )
 
 func TestNew(t *testing.T) {

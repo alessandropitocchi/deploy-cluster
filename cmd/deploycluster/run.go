@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/alepito/deploy-cluster/pkg/template"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/template"
 	"github.com/spf13/cobra"
 )
 

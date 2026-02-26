@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/alepito/deploy-cluster/pkg/logger"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/logger"
 )
 
 // DiffOptions configures the diff operation.

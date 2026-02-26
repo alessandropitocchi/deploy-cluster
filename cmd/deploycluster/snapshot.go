@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/alepito/deploy-cluster/pkg/s3"
-	"github.com/alepito/deploy-cluster/pkg/snapshot"
-	"github.com/alepito/deploy-cluster/pkg/template"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/s3"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/snapshot"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/template"
 	"github.com/spf13/cobra"
 )
 

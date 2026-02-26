@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/alepito/deploy-cluster/pkg/logger"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/logger"
 	"github.com/spf13/cobra"
 )
 
