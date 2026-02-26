@@ -1,4 +1,6 @@
-.PHONY: build test test-e2e lint clean install
+.PHONY: build test test-e2e lint clean install release
+
+VERSION ?= $(shell git describe --tags --always --dirty)
 
 # Build the binary
 build:
@@ -10,7 +12,7 @@ test:
 
 # Run e2e tests (requires Docker and kind)
 test-e2e: build
-	go test ./e2e/... -v -timeout 30m
+	RUN_E2E=1 go test ./e2e/... -v -timeout 30m
 
 # Run e2e tests in short mode (skip e2e)
 test-short:
@@ -28,6 +30,10 @@ clean:
 # Install to GOPATH/bin
 install: build
 	cp klastr $(GOPATH)/bin/
+
+# Build release binaries for all platforms
+release:
+	./scripts/release.sh $(VERSION)
 
 # Development helpers
 dev-cluster: build
