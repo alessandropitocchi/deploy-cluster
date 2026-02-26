@@ -157,3 +157,79 @@ func Delete(name string) error {
 	}
 	return nil
 }
+
+// SaveToS3 creates a snapshot and uploads it to S3.
+func SaveToS3(name, kubecontext, clusterName, provider, templateFile string, namespaces []string, excludeSecrets bool, s3Client S3Client, log *logger.Logger) error {
+	// First create local snapshot
+	dir, err := snapshotDir(name)
+	if err != nil {
+		return err
+	}
+
+	// Clean up local snapshot after upload
+	defer os.RemoveAll(dir)
+
+	// Create local snapshot
+	if err := Save(name, kubecontext, clusterName, provider, templateFile, namespaces, excludeSecrets, log); err != nil {
+		return err
+	}
+
+	// Upload to S3
+	log.Info("Uploading snapshot to S3...\n")
+	if err := s3Client.UploadSnapshot(name, dir); err != nil {
+		return fmt.Errorf("failed to upload to S3: %w", err)
+	}
+
+	log.Success("Snapshot %q saved to S3 (%d resources)\n", name, getResourceCount(dir))
+	return nil
+}
+
+// RestoreFromS3 downloads a snapshot from S3 and restores it.
+func RestoreFromS3(name, kubecontext string, dryRun bool, s3Client S3Client, log *logger.Logger) error {
+	dir, err := snapshotDir(name)
+	if err != nil {
+		return err
+	}
+
+	// Clean up after restore
+	defer os.RemoveAll(dir)
+
+	// Download from S3
+	log.Info("Downloading snapshot %q from S3...\n", name)
+	if err := s3Client.DownloadSnapshot(name, dir); err != nil {
+		return fmt.Errorf("failed to download from S3: %w", err)
+	}
+
+	// Restore
+	return Restore(name, kubecontext, dryRun, log)
+}
+
+// ListS3 returns metadata for all snapshots stored in S3.
+func ListS3(s3Client S3Client) ([]string, error) {
+	return s3Client.ListSnapshots()
+}
+
+// DeleteS3 removes a snapshot from S3.
+func DeleteS3(name string, s3Client S3Client) error {
+	return s3Client.DeleteSnapshot(name)
+}
+
+// S3Client interface for S3 operations (defined to avoid circular imports).
+type S3Client interface {
+	UploadSnapshot(snapshotName string, snapshotDir string) error
+	DownloadSnapshot(snapshotName string, destDir string) error
+	ListSnapshots() ([]string, error)
+	DeleteSnapshot(snapshotName string) error
+}
+
+// getResourceCount returns the number of resources in a snapshot directory.
+func getResourceCount(dir string) int {
+	count := 0
+	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() && info.Name() != "metadata.yaml" {
+			count++
+		}
+		return nil
+	})
+	return count
+}

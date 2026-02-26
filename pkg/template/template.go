@@ -25,6 +25,7 @@ type Template struct {
 	Provider ProviderTemplate `yaml:"provider"`
 	Cluster  ClusterTemplate  `yaml:"cluster"`
 	Plugins  PluginsTemplate  `yaml:"plugins,omitempty"`
+	Snapshot *SnapshotConfig  `yaml:"snapshot,omitempty"` // Optional S3 snapshot configuration
 }
 
 type ProviderTemplate struct {
@@ -37,6 +38,15 @@ type ClusterTemplate struct {
 	ControlPlanes int    `yaml:"controlPlanes"`
 	Workers       int    `yaml:"workers"`
 	Version       string `yaml:"version,omitempty"` // Kubernetes version
+}
+
+// SnapshotConfig holds S3 snapshot configuration.
+type SnapshotConfig struct {
+	Enabled  bool   `yaml:"enabled"`            // Enable S3 snapshot storage
+	Bucket   string `yaml:"bucket"`             // S3 bucket name
+	Prefix   string `yaml:"prefix,omitempty"`   // Optional: key prefix
+	Region   string `yaml:"region,omitempty"`   // Optional: AWS region (defaults to AWS_REGION env var)
+	Endpoint string `yaml:"endpoint,omitempty"` // Optional: custom S3 endpoint for S3-compatible services
 }
 
 type PluginsTemplate struct {

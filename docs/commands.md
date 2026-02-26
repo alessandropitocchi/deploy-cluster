@@ -423,11 +423,11 @@ Switched to context 'kind-my-cluster'
 
 ## `snapshot`
 
-Manage cluster snapshots — export Kubernetes resources to disk and restore them later.
+Manage cluster snapshots — export Kubernetes resources to disk or S3 and restore them later.
 
 ### `snapshot save <name>`
 
-Export all non-system resources from the cluster to a local snapshot.
+Export all non-system resources from the cluster to a local snapshot or S3.
 
 ```bash
 deploy-cluster snapshot save <name> [flags]
@@ -440,11 +440,17 @@ deploy-cluster snapshot save <name> [flags]
 | `-t, --template` | `template.yaml` | Template file |
 | `-e, --env` | `.env` | Environment file for secrets |
 | `--namespace` | *(all non-system)* | Comma-separated list of namespaces to snapshot |
+| `--exclude-secrets` | `false` | Exclude Kubernetes Secrets from the snapshot |
+| `--s3` | `false` | Upload snapshot to S3 |
+| `--s3-bucket` | *(env var)* | S3 bucket name |
+| `--s3-prefix` | *(env var)* | S3 key prefix |
+| `--s3-region` | *(env var)* | AWS region |
+| `--s3-endpoint` | *(env var)* | S3 endpoint URL (for S3-compatible services) |
 
 #### What gets exported
 
 - Dynamic resource discovery via `kubectl api-resources` (captures CRDs too)
-- One file per resource, stored at `~/.deploy-cluster/snapshots/<name>/`
+- One file per resource, stored at `~/.deploy-cluster/snapshots/<name>/` (local) or S3
 - Sanitized: removes `resourceVersion`, `uid`, `managedFields`, `status`, etc.
 
 #### What gets excluded
@@ -454,14 +460,23 @@ deploy-cluster snapshot save <name> [flags]
 - **Controller-managed**: resources with `ownerReferences`
 - **Auto-created**: `kube-root-ca.crt` ConfigMaps, `default` ServiceAccounts, `kubernetes` Service
 
-#### Example
+#### Examples
 
 ```bash
-# Save all non-system resources
+# Save all non-system resources locally
 deploy-cluster snapshot save before-upgrade --template template.yaml
 
 # Save only specific namespaces
 deploy-cluster snapshot save my-snap --namespace app,monitoring --template template.yaml
+
+# Save to S3 using flags
+deploy-cluster snapshot save my-snap --s3 --s3-bucket my-backups --s3-prefix clusters/prod/
+
+# Save to S3 using environment variables
+export DEPLOY_CLUSTER_S3_BUCKET=my-backups
+export DEPLOY_CLUSTER_S3_PREFIX=clusters/prod/
+export AWS_REGION=us-east-1
+deploy-cluster snapshot save my-snap --s3
 ```
 
 ### `snapshot restore <name>`
@@ -479,6 +494,11 @@ deploy-cluster snapshot restore <name> [flags]
 | `-t, --template` | `template.yaml` | Template file |
 | `-e, --env` | `.env` | Environment file for secrets |
 | `--dry-run` | `false` | Preview what would be applied without making changes |
+| `--s3` | `false` | Restore snapshot from S3 |
+| `--s3-bucket` | *(env var)* | S3 bucket name |
+| `--s3-prefix` | *(env var)* | S3 key prefix |
+| `--s3-region` | *(env var)* | AWS region |
+| `--s3-endpoint` | *(env var)* | S3 endpoint URL |
 
 #### Restore Order
 
@@ -491,11 +511,14 @@ Resources are applied in dependency order:
 
 Each `kubectl apply` uses retry with exponential backoff for transient errors.
 
-#### Example
+#### Examples
 
 ```bash
-# Preview restore
+# Preview restore from local snapshot
 deploy-cluster snapshot restore before-upgrade --dry-run --template template.yaml
+
+# Restore from S3
+deploy-cluster snapshot restore my-snap --s3 --s3-bucket my-backups --s3-prefix clusters/prod/
 
 # Apply restore
 deploy-cluster snapshot restore before-upgrade --template template.yaml
@@ -506,12 +529,21 @@ deploy-cluster snapshot restore before-upgrade --template template.yaml
 Display all saved snapshots with metadata.
 
 ```bash
-deploy-cluster snapshot list
+deploy-cluster snapshot list [flags]
 ```
 
-#### Example
+#### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--s3` | `false` | List snapshots in S3 |
+| `--s3-bucket` | *(env var)* | S3 bucket name |
+| `--s3-prefix` | *(env var)* | S3 key prefix |
+
+#### Examples
 
 ```bash
+# List local snapshots
 $ deploy-cluster snapshot list
 
 SNAPSHOTS
@@ -520,20 +552,174 @@ SNAPSHOTS
   Cluster: my-cluster (kind)
   Resources: 42
   Created: 2025-01-15 10:30:00
+
+# List S3 snapshots
+$ deploy-cluster snapshot list --s3 --s3-bucket my-backups
+
+S3 SNAPSHOTS
+─────────────────────────────────────────────────────────────
+• before-upgrade
+• after-migration
 ```
 
 ### `snapshot delete <name>`
 
-Permanently delete a snapshot from disk.
+Permanently delete a snapshot from disk or S3.
 
 ```bash
-deploy-cluster snapshot delete <name>
+deploy-cluster snapshot delete <name> [flags]
 ```
 
-#### Example
+#### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--s3` | `false` | Delete snapshot from S3 |
+| `--s3-bucket` | *(env var)* | S3 bucket name |
+| `--s3-prefix` | *(env var)* | S3 key prefix |
+
+#### Examples
 
 ```bash
+# Delete local snapshot
 deploy-cluster snapshot delete before-upgrade
+
+# Delete S3 snapshot
+deploy-cluster snapshot delete my-snap --s3 --s3-bucket my-backups
 ```
 
-> **Security note:** Snapshots may contain Kubernetes Secrets in plain text.
+---
+
+## S3 Snapshot Storage
+
+Snapshots can be stored in Amazon S3 or S3-compatible services (MinIO, Wasabi, etc.) for backup and disaster recovery.
+
+### Configuration Methods
+
+You can configure S3 in three ways (priority: flags > template config > env vars):
+
+#### 1. Template Configuration (Recommended)
+
+Add to your `template.yaml`:
+
+```yaml
+snapshot:
+  enabled: true
+  bucket: my-k8s-backups
+  prefix: clusters/production/
+  region: us-east-1
+  # endpoint: http://localhost:9000  # For S3-compatible services
+```
+
+With this configuration, all snapshot commands automatically use S3:
+```bash
+deploy-cluster snapshot save my-backup    # Saves to S3 automatically
+deploy-cluster snapshot list              # Lists from S3 automatically
+deploy-cluster snapshot restore my-backup # Restores from S3 automatically
+```
+
+#### 2. Environment Variables
+
+| Environment Variable | Description | Required |
+|---------------------|-------------|----------|
+| `DEPLOY_CLUSTER_S3_BUCKET` | S3 bucket name | Yes |
+| `DEPLOY_CLUSTER_S3_PREFIX` | Key prefix (e.g., `clusters/prod/`) | No |
+| `AWS_REGION` | AWS region | Yes |
+| `AWS_ACCESS_KEY_ID` | AWS access key | Yes* |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key | Yes* |
+| `DEPLOY_CLUSTER_S3_ENDPOINT` | Custom endpoint for S3-compatible services | No |
+
+\* Or use IAM roles/instance profiles when running on AWS.
+
+#### 3. Command Flags
+
+Use `--s3` flag with optional configuration flags:
+
+```bash
+deploy-cluster snapshot save my-backup --s3 \
+  --s3-bucket my-k8s-backups \
+  --s3-prefix clusters/production/ \
+  --s3-region us-east-1
+```
+
+### Examples
+
+#### AWS S3 with Template Config
+
+```yaml
+# template.yaml
+name: production
+provider:
+  type: kind
+
+snapshot:
+  enabled: true
+  bucket: my-k8s-backups
+  prefix: clusters/production/
+  region: us-east-1
+```
+
+```bash
+# All commands automatically use S3
+deploy-cluster snapshot save before-upgrade
+deploy-cluster snapshot list
+deploy-cluster snapshot restore before-upgrade
+```
+
+#### AWS S3 with Environment Variables
+
+```bash
+export DEPLOY_CLUSTER_S3_BUCKET=my-k8s-backups
+export DEPLOY_CLUSTER_S3_PREFIX=clusters/production/
+export AWS_REGION=us-east-1
+export AWS_ACCESS_KEY_ID=AKIA...
+export AWS_SECRET_ACCESS_KEY=...
+
+# Must use --s3 flag with env var config
+deploy-cluster snapshot save before-upgrade --s3
+deploy-cluster snapshot list --s3
+deploy-cluster snapshot restore before-upgrade --s3
+```
+
+#### MinIO (S3-Compatible)
+
+```yaml
+# template.yaml
+snapshot:
+  enabled: true
+  bucket: k8s-backups
+  prefix: clusters/
+  region: us-east-1
+  endpoint: http://localhost:9000
+```
+
+Or via environment:
+```bash
+export DEPLOY_CLUSTER_S3_BUCKET=k8s-backups
+export DEPLOY_CLUSTER_S3_PREFIX=clusters/
+export AWS_REGION=us-east-1
+export AWS_ACCESS_KEY_ID=minioadmin
+export AWS_SECRET_ACCESS_KEY=minioadmin
+export DEPLOY_CLUSTER_S3_ENDPOINT=http://localhost:9000
+
+deploy-cluster snapshot save my-snap --s3
+```
+
+### S3 Storage Structure
+
+Snapshots are stored in S3 with the following structure:
+
+```
+s3://bucket-name/prefix/snapshot-name/
+├── metadata.yaml
+├── crds/
+├── namespaces/
+├── cluster-scoped/
+└── namespaced/
+    └── namespace-name/
+        ├── deployments/
+        ├── services/
+        └── ...
+```
+
+> **Security note:** Snapshots may contain Kubernetes Secrets in plain text. Always encrypt your S3 buckets and use IAM policies to restrict access.

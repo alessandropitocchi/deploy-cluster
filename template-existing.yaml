@@ -50,3 +50,12 @@ plugins:
       namespace: default
       values:
         replicaCount: 2
+
+# Optional: S3 snapshot configuration
+# Uncomment to enable automatic S3 storage for snapshots
+# snapshot:
+#   enabled: true
+#   bucket: my-k8s-backups
+#   prefix: clusters/production/
+#   region: us-east-1
+#   # endpoint: http://localhost:9000  # For MinIO or S3-compatible services

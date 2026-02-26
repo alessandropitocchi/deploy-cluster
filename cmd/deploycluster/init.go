@@ -228,6 +228,22 @@ plugins:
   #     #   enabled: true
   #     #   host: myapp.localhost
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # S3 Snapshot Storage: Backup snapshots to S3
+  # Use for: Disaster recovery, cross-region backup, long-term retention
+  # ─────────────────────────────────────────────────────────────────────────────
+  # snapshot:
+  #   enabled: true
+  #   bucket: my-k8s-backups           # S3 bucket name
+  #   prefix: clusters/my-cluster/     # Optional: key prefix
+  #   region: us-east-1                # Optional: AWS region (defaults to AWS_REGION)
+  #   # endpoint: http://localhost:9000  # Optional: for MinIO/S3-compatible
+  #   #
+  #   # AWS credentials can be provided via:
+  #   # - Environment variables: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+  #   # - IAM roles (when running on AWS)
+  #   # - ~/.aws/credentials file
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Environment Variables & Secrets
 # ═══════════════════════════════════════════════════════════════════════════════
