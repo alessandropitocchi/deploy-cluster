@@ -168,7 +168,7 @@ func TestGenerateKindConfig_WithIngress(t *testing.T) {
 		Plugins: template.PluginsTemplate{
 			Ingress: &template.IngressTemplate{
 				Enabled: true,
-				Type:    "nginx",
+				Type:    "traefik",
 			},
 		},
 	}
@@ -176,9 +176,7 @@ func TestGenerateKindConfig_WithIngress(t *testing.T) {
 	kindCfg := p.generateKindConfig(cfg)
 
 	cp := kindCfg.Nodes[0]
-	if len(cp.KubeadmConfigPatches) != 1 {
-		t.Fatalf("KubeadmConfigPatches count = %d, want 1", len(cp.KubeadmConfigPatches))
-	}
+	// New ingress controllers don't need KubeadmConfigPatches
 	if len(cp.ExtraPortMappings) != 2 {
 		t.Fatalf("ExtraPortMappings count = %d, want 2", len(cp.ExtraPortMappings))
 	}

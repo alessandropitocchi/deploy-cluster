@@ -21,14 +21,9 @@ The kind provider:
 
 When the **ingress** plugin is enabled, the provider automatically adds to the first control-plane node:
 
-- **Label** `ingress-ready=true` — required by the nginx manifest for kind
 - **Port mapping** `80:80` and `443:443` — exposes HTTP/HTTPS ports on the host
 
-This configuration happens at cluster creation time. If you enable ingress on an existing cluster, you must add the label manually:
-
-```bash
-kubectl label node <cluster>-control-plane ingress-ready=true
-```
+This configuration happens at cluster creation time.
 
 ## Custom Port Mappings
 

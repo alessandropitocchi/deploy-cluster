@@ -557,7 +557,7 @@ func TestValidate_IngressValidType(t *testing.T) {
 		Provider: ProviderTemplate{Type: "kind"},
 		Cluster:  ClusterTemplate{ControlPlanes: 1, Workers: 0},
 		Plugins: PluginsTemplate{
-			Ingress: &IngressTemplate{Enabled: true, Type: "nginx"},
+			Ingress: &IngressTemplate{Enabled: true, Type: "traefik"},
 		},
 	}
 	if err := cfg.Validate(); err != nil {

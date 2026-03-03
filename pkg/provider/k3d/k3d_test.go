@@ -100,10 +100,10 @@ func TestGenerateK3dConfig_NoVersion(t *testing.T) {
 	}
 }
 
-func TestGenerateK3dConfig_WithIngressNginx(t *testing.T) {
+func TestGenerateK3dConfig_WithIngressNginxGatewayFabric(t *testing.T) {
 	p := New()
 	cfg := &template.Template{
-		Name: "ingress-nginx",
+		Name: "ingress-nginx-gateway",
 		Cluster: template.ClusterTemplate{
 			ControlPlanes: 1,
 			Workers:       1,
@@ -111,7 +111,7 @@ func TestGenerateK3dConfig_WithIngressNginx(t *testing.T) {
 		Plugins: template.PluginsTemplate{
 			Ingress: &template.IngressTemplate{
 				Enabled: true,
-				Type:    "nginx",
+				Type:    "nginx-gateway-fabric",
 			},
 		},
 	}
@@ -132,9 +132,9 @@ func TestGenerateK3dConfig_WithIngressNginx(t *testing.T) {
 		t.Errorf("Ports[1].Port = %q, want %q", k3dCfg.Ports[1].Port, "443:443")
 	}
 
-	// Should disable Traefik when using nginx
+	// Should disable Traefik when using nginx-gateway-fabric
 	if k3dCfg.Options == nil || k3dCfg.Options.K3s == nil {
-		t.Fatal("Options.K3s should not be nil when using nginx")
+		t.Fatal("Options.K3s should not be nil when using nginx-gateway-fabric")
 	}
 	if len(k3dCfg.Options.K3s.ExtraArgs) != 1 {
 		t.Fatalf("ExtraArgs count = %d, want 1", len(k3dCfg.Options.K3s.ExtraArgs))

@@ -158,6 +158,10 @@ func (p *Provider) generateKindConfig(cfg *template.Template) *KindConfig {
 
 	// Check if ingress is enabled
 	ingressEnabled := cfg.Plugins.Ingress != nil && cfg.Plugins.Ingress.Enabled
+	ingressType := ""
+	if ingressEnabled {
+		ingressType = cfg.Plugins.Ingress.Type
+	}
 
 	// Add control plane nodes
 	for i := 0; i < cfg.Cluster.ControlPlanes; i++ {
@@ -167,16 +171,16 @@ func (p *Provider) generateKindConfig(cfg *template.Template) *KindConfig {
 		}
 		// First control-plane gets ingress config (label + port mappings)
 		if i == 0 && ingressEnabled {
-			node.KubeadmConfigPatches = []string{
-				`kind: InitConfiguration
-nodeRegistration:
-  kubeletExtraArgs:
-    node-labels: "ingress-ready=true"
-`,
-			}
+			// Port mappings are needed for all ingress types
 			node.ExtraPortMappings = []KindPortMapping{
 				{ContainerPort: 80, HostPort: 80, Protocol: "TCP"},
 				{ContainerPort: 443, HostPort: 443, Protocol: "TCP"},
+			}
+			// Legacy label only needed for old nginx ingress controller
+			// New controllers (traefik, nginx-gateway-fabric) don't need this
+			if ingressType == "" {
+				// Default behavior for backward compatibility - no label needed
+				_ = ingressType
 			}
 		}
 		// Add custom port mappings to first control-plane

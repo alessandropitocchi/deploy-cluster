@@ -204,9 +204,9 @@ func (p *Provider) generateK3dConfig(cfg *template.Template) *K3dConfig {
 			{Port: "443:443", NodeFilters: []string{"loadbalancer"}},
 		}
 
-		// Disable Traefik if user chose nginx (k3d ships Traefik by default)
+		// Disable Traefik if user chose nginx-gateway-fabric (k3d ships Traefik by default)
 		ingressType := cfg.Plugins.Ingress.Type
-		if ingressType == "nginx" {
+		if ingressType == "nginx-gateway-fabric" {
 			k3dCfg.Options = &K3dOptions{
 				K3s: &K3sOptions{
 					ExtraArgs: []K3sExtraArg{

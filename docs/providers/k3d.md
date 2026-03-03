@@ -7,7 +7,7 @@ The `k3d` provider creates local Kubernetes clusters using [k3d](https://k3d.io/
 - **Lightweight**: Uses k3s, a lightweight Kubernetes distribution
 - **Fast**: Quick cluster creation and teardown
 - **Built-in ServiceLB**: Includes built-in service load balancer
-- **Traefik Option**: Can use Traefik as ingress controller (alternative to NGINX)
+- **Gateway API Support**: Traefik and NGINX Gateway Fabric with Gateway API
 - **Multi-node**: Support for control planes and worker nodes
 
 ## Requirements
@@ -45,7 +45,7 @@ plugins:
   
   ingress:
     enabled: true
-    type: traefik    # k3d uses Traefik by default, or use nginx
+    type: traefik    # or nginx-gateway-fabric
   
   # ... other plugins
 ```
@@ -56,13 +56,15 @@ plugins:
 
 k3d has different ingress handling compared to kind:
 
-- **Traefik** (default): k3s comes with Traefik pre-installed
-  - Set `plugins.ingress.type: traefik` to use the built-in Traefik
-  - The provider will verify Traefik is running, not install it
+- **Traefik**: Full installation with Gateway API support
+  - Set `plugins.ingress.type: traefik`
+  - Installs via Helm with Gateway API enabled
+  - k3d's built-in Traefik is disabled
   
-- **NGINX**: You can still use NGINX if preferred
-  - Set `plugins.ingress.type: nginx`
-  - The provider will install NGINX and disable Traefik
+- **NGINX Gateway Fabric**: F5's Gateway API implementation
+  - Set `plugins.ingress.type: nginx-gateway-fabric`
+  - Installs official manifests from GitHub releases
+  - k3d's built-in Traefik is disabled automatically
 
 ### Port Exposure
 
@@ -113,10 +115,10 @@ plugins:
       host: grafana.localhost
 ```
 
-### With NGINX Ingress
+### With NGINX Gateway Fabric
 
 ```yaml
-name: k3d-nginx
+name: k3d-nginx-gateway
 provider:
   type: k3d
 cluster:
@@ -126,7 +128,7 @@ cluster:
 plugins:
   ingress:
     enabled: true
-    type: nginx  # This will disable Traefik
+    type: nginx-gateway-fabric  # This will disable built-in Traefik
 ```
 
 ## Commands
@@ -189,11 +191,16 @@ docker system df
 
 ### Ingress not working
 
-Verify Traefik/NGINX is running:
+Verify the ingress controller is running:
 ```bash
-kubectl get pods -n kube-system -l app=traefik
-# or
-kubectl get pods -n ingress-nginx
+# Traefik
+kubectl get pods -n traefik
+
+# NGINX Gateway Fabric
+kubectl get pods -n nginx-gateway
+
+# Check Gateway classes
+kubectl get gatewayclass
 ```
 
 ## See Also

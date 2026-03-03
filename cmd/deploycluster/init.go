@@ -191,13 +191,14 @@ plugins:
   #   type: local-path  # Only option currently available
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Ingress: HTTP/HTTPS routing and load balancing
+  # Ingress: HTTP/HTTPS routing and load balancing with Gateway API support
   # Required for: Exposing services via hostnames
   # ─────────────────────────────────────────────────────────────────────────────
   # ingress:
   #   enabled: true
-  #   type: nginx    # For kind provider
-  #   # type: traefik  # For k3d provider (uses built-in Traefik)
+  #   type: traefik              # Options: traefik, nginx-gateway-fabric
+  #   # Traefik: Modern reverse proxy with native Gateway API support
+  #   # nginx-gateway-fabric: F5's Gateway API implementation using NGINX
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Cert-Manager: Automatic TLS certificate management
@@ -429,12 +430,14 @@ plugins:
 		{
 			name: "ingress.yaml",
 			content: `# Ingress Controller Configuration
-# HTTP/HTTPS routing and load balancing
+# HTTP/HTTPS routing and load balancing with Gateway API support
 
 plugins:
   ingress:
     enabled: false  # Set to true to enable
-    type: nginx     # Options: nginx, traefik
+    type: traefik              # Options: traefik, nginx-gateway-fabric
+    # Traefik: Modern reverse proxy with native Gateway API support
+    # nginx-gateway-fabric: F5's Gateway API implementation using NGINX
 `,
 		},
 		{

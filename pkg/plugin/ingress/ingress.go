@@ -1,6 +1,7 @@
 package ingress
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,8 +16,17 @@ import (
 var execCommand = exec.Command
 
 const (
-	nginxManifestKindURL  = "https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.0/deploy/static/provider/kind/deploy.yaml"
-	nginxManifestCloudURL = "https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.0/deploy/static/provider/cloud/deploy.yaml"
+	// Traefik Helm chart
+	traefikRepoURL      = "https://traefik.github.io/charts"
+	traefikChartName    = "traefik"
+	traefikNamespace    = "traefik"
+	traefikReleaseName  = "traefik"
+
+	// NGINX Gateway Fabric OCI chart
+	nginxGatewayOCIChart    = "oci://ghcr.io/nginx/charts/nginx-gateway-fabric"
+	nginxGatewayNamespace   = "nginx-gateway"
+	nginxGatewayReleaseName = "ngf"
+	nginxGatewayVersion     = "v2.4.2"
 )
 
 // Plugin implements the plugin.Plugin interface for ingress.
@@ -43,12 +53,12 @@ func (p *Plugin) Install(cfg interface{}, kubecontext string, providerType strin
 	}
 
 	switch ingressCfg.Type {
-	case "nginx":
-		return p.installNginx(kubecontext, providerType)
 	case "traefik":
-		return p.installTraefik(kubecontext)
+		return p.installTraefik(kubecontext, providerType)
+	case "nginx-gateway-fabric":
+		return p.installNginxGatewayFabric(kubecontext)
 	default:
-		return fmt.Errorf("unsupported ingress type: %s (supported: nginx, traefik)", ingressCfg.Type)
+		return fmt.Errorf("unsupported ingress type: %s (supported: traefik, nginx-gateway-fabric)", ingressCfg.Type)
 	}
 }
 
@@ -60,10 +70,10 @@ func (p *Plugin) Uninstall(cfg interface{}, kubecontext string) error {
 	}
 
 	switch ingressCfg.Type {
-	case "nginx":
-		return p.uninstallNginx(kubecontext)
 	case "traefik":
 		return p.uninstallTraefik(kubecontext)
+	case "nginx-gateway-fabric":
+		return p.uninstallNginxGatewayFabric(kubecontext)
 	default:
 		return fmt.Errorf("unsupported ingress type: %s", ingressCfg.Type)
 	}
@@ -71,16 +81,16 @@ func (p *Plugin) Uninstall(cfg interface{}, kubecontext string) error {
 
 // IsInstalled checks if the ingress plugin is installed.
 func (p *Plugin) IsInstalled(kubecontext string) (bool, error) {
-	// Check nginx
+	// Check Traefik
 	cmd := execCommand("kubectl", "--context", kubecontext,
-		"get", "deployment", "ingress-nginx-controller", "-n", "ingress-nginx")
+		"get", "deployment", "traefik", "-n", traefikNamespace)
 	if err := cmd.Run(); err == nil {
 		return true, nil
 	}
 
-	// Check traefik (in kube-system, as deployed by k3d)
+	// Check NGINX Gateway Fabric
 	cmd = execCommand("kubectl", "--context", kubecontext,
-		"get", "deployment", "traefik", "-n", "kube-system")
+		"get", "deployment", nginxGatewayReleaseName+"-nginx-gateway-fabric", "-n", nginxGatewayNamespace)
 	if err := cmd.Run(); err == nil {
 		return true, nil
 	}
@@ -111,104 +121,168 @@ func (p *Plugin) DryRun(cfg interface{}, kubecontext string, providerType string
 		fmt.Println("  Status: already installed (would skip)")
 	} else {
 		fmt.Println("  Status: not installed")
-		if ingressCfg.Type == "nginx" {
-			url := p.nginxManifestURL(providerType)
-			fmt.Printf("  Manifest: %s\n", url)
+		switch ingressCfg.Type {
+		case "traefik":
+			fmt.Printf("  Helm Chart: %s/%s\n", traefikRepoURL, traefikChartName)
+			fmt.Printf("  Namespace: %s\n", traefikNamespace)
+		case "nginx-gateway-fabric":
+			fmt.Printf("  OCI Chart: %s\n", nginxGatewayOCIChart)
+			fmt.Printf("  Namespace: %s\n", nginxGatewayNamespace)
 		}
 	}
 	return nil
 }
 
-func (p *Plugin) nginxManifestURL(providerType string) string {
-	if providerType == "kind" {
-		return nginxManifestKindURL
+// installTraefik installs Traefik with Gateway API support
+func (p *Plugin) installTraefik(kubecontext string, providerType string) error {
+	p.Log.Info("Installing Traefik ingress controller with Gateway API support...\n")
+
+	// Add Traefik Helm repo
+	p.Log.Info("Adding Traefik Helm repository...\n")
+	cmd := execCommand("helm", "repo", "add", "traefik", traefikRepoURL)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		p.Log.Warn("Failed to add Traefik repo (may already exist), continuing...\n")
 	}
-	return nginxManifestCloudURL
-}
 
-func (p *Plugin) installNginx(kubecontext string, providerType string) error {
-	manifestURL := p.nginxManifestURL(providerType)
-	p.Log.Info("Installing nginx ingress controller...\n")
+	// Update repos
+	cmd = execCommand("helm", "repo", "update")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to update Helm repos: %w", err)
+	}
 
-	err := retry.Run(3, 5*time.Second, p.Log.Warn, func() error {
-		cmd := execCommand("kubectl", "--context", kubecontext,
-			"apply", "-f", manifestURL)
+	// Create namespace
+	p.Log.Info("Creating Traefik namespace...\n")
+	cmd = execCommand("kubectl", "--context", kubecontext,
+		"create", "namespace", traefikNamespace, "--dry-run=client", "-o", "yaml")
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to generate namespace manifest: %w", err)
+	}
+
+	applyCmd := execCommand("kubectl", "--context", kubecontext, "apply", "-f", "-")
+	applyCmd.Stdin = bytes.NewReader(output)
+	applyCmd.Stdout = os.Stdout
+	applyCmd.Stderr = os.Stderr
+	// Ignore error if namespace already exists
+	_ = applyCmd.Run()
+
+	// Install Traefik with Gateway API enabled
+	p.Log.Info("Installing Traefik Helm chart...\n")
+	err = retry.Run(3, 5*time.Second, p.Log.Warn, func() error {
+		args := []string{
+			"upgrade", "--install", traefikReleaseName, traefikChartName + "/" + traefikChartName,
+			"--namespace", traefikNamespace,
+			"--kube-context", kubecontext,
+			"--set", "experimental.kubernetesGateway.enabled=true",
+			"--set", "providers.kubernetesIngress.enabled=true",
+			"--set", "providers.kubernetesGateway.enabled=true",
+			"--set", "ports.web.exposedPort=80",
+			"--set", "ports.websecure.exposedPort=443",
+			"--wait",
+			"--timeout", p.Timeout.String(),
+		}
+		cmd := execCommand("helm", args...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		return cmd.Run()
 	})
 	if err != nil {
-		return fmt.Errorf("failed to apply nginx ingress manifest: %w", err)
+		return fmt.Errorf("failed to install Traefik: %w", err)
 	}
 
-	p.Log.Info("Waiting for nginx ingress controller to be ready...\n")
-	waitCmd := execCommand("kubectl", "--context", kubecontext,
-		"rollout", "status", "deployment/ingress-nginx-controller",
-		"-n", "ingress-nginx", "--timeout", p.Timeout.String())
-	waitCmd.Stdout = os.Stdout
-	waitCmd.Stderr = os.Stderr
-	if err := waitCmd.Run(); err != nil {
-		return fmt.Errorf("nginx ingress controller not ready: %w", err)
-	}
-
-	p.Log.Success("nginx ingress controller installed successfully\n")
-	p.Log.Info("Ingress class: nginx\n")
-	return nil
-}
-
-func (p *Plugin) uninstallNginx(kubecontext string) error {
-	p.Log.Info("Uninstalling nginx ingress controller...\n")
-
-	// Try kind URL first, then cloud URL for cleanup
-	cmd := execCommand("kubectl", "--context", kubecontext,
-		"delete", "-f", nginxManifestKindURL)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		// Try cloud URL
-		cmd = execCommand("kubectl", "--context", kubecontext,
-			"delete", "-f", nginxManifestCloudURL)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to delete nginx ingress: %w", err)
-		}
-	}
-
-	p.Log.Success("nginx ingress controller uninstalled\n")
-	return nil
-}
-
-func (p *Plugin) installTraefik(kubecontext string) error {
-	// On k3d, Traefik is already installed by the provider.
-	// Just verify it's ready.
-	p.Log.Info("Verifying Traefik ingress controller readiness...\n")
-
-	waitCmd := execCommand("kubectl", "--context", kubecontext,
-		"rollout", "status", "deployment/traefik",
-		"-n", "kube-system", "--timeout", p.Timeout.String())
-	waitCmd.Stdout = os.Stdout
-	waitCmd.Stderr = os.Stderr
-	if err := waitCmd.Run(); err != nil {
-		return fmt.Errorf("traefik ingress controller not ready: %w", err)
-	}
-
-	p.Log.Success("Traefik ingress controller is ready\n")
+	p.Log.Success("Traefik ingress controller installed successfully\n")
 	p.Log.Info("Ingress class: traefik\n")
+	p.Log.Info("Gateway class: traefik-gateway\n")
 	return nil
 }
 
 func (p *Plugin) uninstallTraefik(kubecontext string) error {
 	p.Log.Info("Uninstalling Traefik ingress controller...\n")
 
-	cmd := execCommand("kubectl", "--context", kubecontext,
-		"delete", "deployment", "traefik", "-n", "kube-system")
+	cmd := execCommand("helm", "uninstall", traefikReleaseName,
+		"--namespace", traefikNamespace,
+		"--kube-context", kubecontext)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to delete traefik ingress: %w", err)
+		return fmt.Errorf("failed to uninstall Traefik: %w", err)
 	}
 
+	// Delete namespace
+	cmd = execCommand("kubectl", "--context", kubecontext,
+		"delete", "namespace", traefikNamespace, "--ignore-not-found=true")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	_ = cmd.Run()
+
 	p.Log.Success("Traefik ingress controller uninstalled\n")
+	return nil
+}
+
+// installNginxGatewayFabric installs NGINX Gateway Fabric (F5) with Gateway API support via Helm OCI
+func (p *Plugin) installNginxGatewayFabric(kubecontext string) error {
+	p.Log.Info("Installing NGINX Gateway Fabric (Gateway API)...\n")
+
+	// Install Gateway API CRDs first
+	p.Log.Info("Installing Gateway API CRDs...\n")
+	crdsCmd := execCommand("sh", "-c",
+		fmt.Sprintf("kubectl kustomize 'https://github.com/nginx/nginx-gateway-fabric/config/crd/gateway-api/standard?ref=%s' | kubectl --context %s apply -f -",
+			nginxGatewayVersion, kubecontext))
+	crdsCmd.Stdout = os.Stdout
+	crdsCmd.Stderr = os.Stderr
+	if err := crdsCmd.Run(); err != nil {
+		return fmt.Errorf("failed to install Gateway API CRDs: %w", err)
+	}
+
+	// Install NGINX Gateway Fabric via Helm OCI
+	p.Log.Info("Installing NGINX Gateway Fabric Helm chart...\n")
+	err := retry.Run(3, 5*time.Second, p.Log.Warn, func() error {
+		args := []string{
+			"upgrade", "--install", nginxGatewayReleaseName,
+			nginxGatewayOCIChart,
+			"--namespace", nginxGatewayNamespace,
+			"--kube-context", kubecontext,
+			"--create-namespace",
+			"--wait",
+			"--timeout", p.Timeout.String(),
+		}
+		cmd := execCommand("helm", args...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	})
+	if err != nil {
+		return fmt.Errorf("failed to install NGINX Gateway Fabric: %w", err)
+	}
+
+	p.Log.Success("NGINX Gateway Fabric installed successfully\n")
+	p.Log.Info("Gateway class: nginx\n")
+	return nil
+}
+
+func (p *Plugin) uninstallNginxGatewayFabric(kubecontext string) error {
+	p.Log.Info("Uninstalling NGINX Gateway Fabric...\n")
+
+	cmd := execCommand("helm", "uninstall", nginxGatewayReleaseName,
+		"--namespace", nginxGatewayNamespace,
+		"--kube-context", kubecontext)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to uninstall NGINX Gateway Fabric: %w", err)
+	}
+
+	// Delete namespace
+	cmd = execCommand("kubectl", "--context", kubecontext,
+		"delete", "namespace", nginxGatewayNamespace, "--ignore-not-found=true")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	_ = cmd.Run()
+
+	p.Log.Success("NGINX Gateway Fabric uninstalled\n")
 	return nil
 }

@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alessandropitocchi/deploy-cluster/pkg/template"
 	"github.com/alessandropitocchi/deploy-cluster/pkg/logger"
+	"github.com/alessandropitocchi/deploy-cluster/pkg/template"
 )
 
 func testLogger() *logger.Logger {
@@ -46,8 +46,9 @@ func TestInstall_UnsupportedType(t *testing.T) {
 	if err == nil {
 		t.Fatal("Install() should fail for unsupported type")
 	}
-	if got := err.Error(); got != "unsupported ingress type: haproxy (supported: nginx, traefik)" {
-		t.Errorf("error = %q, want specific message", got)
+	want := "unsupported ingress type: haproxy (supported: traefik, nginx-gateway-fabric)"
+	if got := err.Error(); got != want {
+		t.Errorf("error = %q, want %q", got, want)
 	}
 }
 
@@ -58,8 +59,9 @@ func TestUninstall_UnsupportedType(t *testing.T) {
 	if err == nil {
 		t.Fatal("Uninstall() should fail for unsupported type")
 	}
-	if got := err.Error(); got != "unsupported ingress type: haproxy" {
-		t.Errorf("error = %q, want specific message", got)
+	want := "unsupported ingress type: haproxy"
+	if got := err.Error(); got != want {
+		t.Errorf("error = %q, want %q", got, want)
 	}
 }
 
@@ -71,23 +73,20 @@ func TestInstall_TraefikType(t *testing.T) {
 	cfg := &template.IngressTemplate{Enabled: true, Type: "traefik"}
 	err := p.Install(cfg, "fake-context", "k3d")
 	// Will fail because no real cluster, but should NOT be "unsupported ingress type"
-	if err != nil && err.Error() == "unsupported ingress type: traefik (supported: nginx, traefik)" {
+	want := "unsupported ingress type: traefik (supported: traefik, nginx-gateway-fabric)"
+	if err != nil && err.Error() == want {
 		t.Error("traefik should be a supported ingress type")
 	}
 }
 
-func TestNginxManifestURL_Kind(t *testing.T) {
+func TestInstall_NginxGatewayFabricType(t *testing.T) {
+	// NGINX Gateway Fabric type should be accepted
 	p := New(testLogger(), 5*time.Minute)
-	got := p.nginxManifestURL("kind")
-	if got != nginxManifestKindURL {
-		t.Errorf("nginxManifestURL(kind) = %q, want kind URL", got)
-	}
-}
-
-func TestNginxManifestURL_K3d(t *testing.T) {
-	p := New(testLogger(), 5*time.Minute)
-	got := p.nginxManifestURL("k3d")
-	if got != nginxManifestCloudURL {
-		t.Errorf("nginxManifestURL(k3d) = %q, want cloud URL", got)
+	cfg := &template.IngressTemplate{Enabled: true, Type: "nginx-gateway-fabric"}
+	err := p.Install(cfg, "fake-context", "kind")
+	// Will fail because no real cluster, but should NOT be "unsupported ingress type"
+	want := "unsupported ingress type: nginx-gateway-fabric (supported: traefik, nginx-gateway-fabric)"
+	if err != nil && err.Error() == want {
+		t.Error("nginx-gateway-fabric should be a supported ingress type")
 	}
 }

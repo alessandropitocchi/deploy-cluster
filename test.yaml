@@ -57,9 +57,9 @@ plugins:
   # Ingress: HTTP/HTTPS routing and load balancing
   # Required for: Exposing services via hostnames
   # ─────────────────────────────────────────────────────────────────────────────
-  # ingress:
-  #   enabled: true
-  #   type: nginx    # For kind provider
+  ingress:
+    enabled: true
+    type: traefik   # For kind provider
   #   # type: traefik  # For k3d provider (uses built-in Traefik)
 
   # ─────────────────────────────────────────────────────────────────────────────
@@ -123,29 +123,29 @@ plugins:
   # ArgoCD: GitOps continuous delivery
   # Features: Declarative app deployment, auto-sync, rollback
   # ─────────────────────────────────────────────────────────────────────────────
-  argocd:
-    enabled: true
-    namespace: argocd
-    version: stable  # Or specific version like "v2.12.0"
-    # Optional: expose ArgoCD via ingress
-    # ingress:
-    #   enabled: true
-    #   host: argocd.localhost
-    #   # Get password: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
-    #
-    # Git repositories to configure
-    repos: 
-      - name: app-repo
-        url: git@git.elmec.com:PITOCCHI/test-argo.git
-        type: git
-        sshKeyFile: ~/.ssh/id_ed25519
-    apps:
-      - name: application-bootstrap
-        namespace: argocd
-        repoURL: git@git.elmec.com:PITOCCHI/test-argo.git
-        targetRevision: main
-        path: argocd
-        autoSync: true 
+  # argocd:
+  #   enabled: true
+  #   namespace: argocd
+  #   version: stable  # Or specific version like "v2.12.0"
+  #   # Optional: expose ArgoCD via ingress
+  #   # ingress:
+  #   #   enabled: true
+  #   #   host: argocd.localhost
+  #   #   # Get password: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+  #   #
+  #   # Git repositories to configure
+  #   repos: 
+  #     - name: app-repo
+  #       url: git@git.elmec.com:PITOCCHI/test-argo.git
+  #       type: git
+  #       sshKeyFile: ~/.ssh/id_ed25519
+  #   apps:
+  #     - name: application-bootstrap
+  #       namespace: argocd
+  #       repoURL: git@git.elmec.com:PITOCCHI/test-argo.git
+  #       targetRevision: main
+  #       path: argocd
+  #       autoSync: true 
 
   #   # Applications to create
   #   # apps:

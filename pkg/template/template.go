@@ -15,7 +15,7 @@ import (
 var (
 	validProviders       = []string{"kind", "k3d", "existing"}
 	validStorageTypes    = []string{"local-path"}
-	validIngressTypes    = []string{"nginx", "traefik"}
+	validIngressTypes    = []string{"traefik", "nginx-gateway-fabric"}
 	validMonitoringTypes = []string{"prometheus"}
 	validDashboardTypes  = []string{"headlamp"}
 	validExternalDNSProviders = []string{"cloudflare", "route53", "google", "azure", "digitalocean"}
