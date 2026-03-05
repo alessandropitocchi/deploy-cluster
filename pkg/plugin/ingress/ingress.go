@@ -217,7 +217,7 @@ func (p *Plugin) installTraefik(cfg *template.IngressTemplate, kubecontext strin
 
 	p.Log.Success("Traefik ingress controller installed successfully\n")
 	p.Log.Info("Ingress class: traefik\n")
-	p.Log.Info("Gateway class: traefik-gateway\n")
+	p.Log.Info("Gateway class: traefik\n")
 
 	// Create shared Gateway for HTTPRoutes
 	if err := p.createSharedGateway(kubecontext, "traefik"); err != nil {
@@ -239,11 +239,19 @@ func (p *Plugin) createSharedGateway(kubecontext string, ingressType string) err
 		namespace = nginxGatewayNamespace
 	}
 
+	// Determine port based on ingress type
+	var port int32 = 8000 // Traefik default
+	if ingressType == "nginx-gateway-fabric" {
+		port = 80
+	}
+
 	manifest := k8s.GatewayManifest(k8s.GatewayConfig{
 		Name:             "shared-gateway",
 		Namespace:        namespace,
 		GatewayClassName: gatewayClass,
 		Hosts:            []string{}, // Empty = accept all hosts
+		Port:             port,
+		AllowAllRoutes:   true, // Allow routes from all namespaces
 	})
 
 	cmd := execCommand("kubectl", "--context", kubecontext, "apply", "-f", "-")

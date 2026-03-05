@@ -6,14 +6,31 @@ import (
 
 // GatewayConfig describes a Gateway API Gateway resource to generate.
 type GatewayConfig struct {
-	Name        string
-	Namespace   string
-	GatewayClassName string  // e.g., "traefik-gateway" or "nginx"
-	Hosts       []string    // Hosts to create listeners for
+	Name             string
+	Namespace        string
+	GatewayClassName string // e.g., "traefik" or "nginx"
+	Hosts            []string // Hosts to create listeners for (empty = all hosts)
+	Port             int32    // Listener port (default: 8000 for Traefik)
+	AllowAllRoutes   bool     // Allow routes from all namespaces (default: true)
 }
 
 // GatewayManifest returns a YAML manifest string for a Gateway API Gateway resource.
 func GatewayManifest(cfg GatewayConfig) string {
+	// Default port for Traefik
+	port := cfg.Port
+	if port == 0 {
+		port = 8000
+	}
+
+	// Build allowed routes section
+	allowedRoutes := ""
+	if cfg.AllowAllRoutes {
+		allowedRoutes = `
+      allowedRoutes:
+        namespaces:
+          from: All`
+	}
+
 	// Build listeners for each unique host
 	listeners := ""
 	for i, host := range cfg.Hosts {
@@ -22,15 +39,15 @@ func GatewayManifest(cfg GatewayConfig) string {
 		}
 		listeners += fmt.Sprintf(`    - name: http-%d
       protocol: HTTP
-      port: 80
-      hostname: %s`, i, host)
+      port: %d
+      hostname: %s%s`, i, port, host, allowedRoutes)
 	}
 
 	// If no hosts specified, create a generic listener
 	if len(cfg.Hosts) == 0 {
-		listeners = `    - name: http
+		listeners = fmt.Sprintf(`    - name: http
       protocol: HTTP
-      port: 80`
+      port: %d%s`, port, allowedRoutes)
 	}
 
 	return fmt.Sprintf(`apiVersion: gateway.networking.k8s.io/v1
@@ -105,10 +122,10 @@ spec:
 func GetGatewayClassName(ingressType string) string {
 	switch ingressType {
 	case "traefik":
-		return "traefik-gateway"
+		return "traefik"
 	case "nginx-gateway-fabric":
 		return "nginx"
 	default:
-		return "traefik-gateway"
+		return "traefik"
 	}
 }
