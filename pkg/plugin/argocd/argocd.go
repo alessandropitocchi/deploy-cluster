@@ -712,7 +712,7 @@ func (p *Plugin) deleteApp(name, kubecontext, namespace string) error {
 }
 
 func (p *Plugin) configureIngress(cfg *template.ArgoCDIngressTemplate, kubecontext string, namespace string) error {
-	p.Log.Info("Configuring ingress for ArgoCD UI...\n")
+	p.Log.Info("Configuring HTTPRoute for ArgoCD UI...\n")
 
 	// Set server.insecure=true in argocd-cmd-params-cm ConfigMap
 	// This disables internal TLS so the ingress controller can proxy HTTP to the backend
@@ -746,41 +746,78 @@ data:
 		return fmt.Errorf("argocd-server not ready after restart: %w", err)
 	}
 
-	// Build Ingress manifest
-	ingressCfg := k8s.IngressConfig{
-		Name:        "argocd-server-ingress",
-		Namespace:   namespace,
-		Host:        cfg.Host,
-		ServiceName: "argocd-server",
-		ServicePort: 80,
-		TLS:         cfg.TLS,
+	// Try to detect which ingress controller is installed by checking namespaces
+	gatewayNS := p.detectIngressNamespace(kubecontext)
+	if gatewayNS == "" {
+		p.Log.Warn("Could not detect ingress controller, defaulting to traefik namespace\n")
+		gatewayNS = "traefik"
 	}
-	if cfg.TLS {
-		ingressCfg.TLSSecret = "argocd-tls"
-		ingressCfg.Annotations = map[string]string{
-			"cert-manager.io/cluster-issuer": `"letsencrypt-prod"`,
-		}
-	}
-	manifest := k8s.IngressManifest(ingressCfg)
 
-	p.Log.Debug("Applying Ingress resource for host '%s'...\n", cfg.Host)
+	// Build HTTPRoute manifest
+	httpRouteCfg := k8s.HTTPRouteConfig{
+		Name:             "argocd-server",
+		Namespace:        namespace,
+		Host:             cfg.Host,
+		GatewayName:      "shared-gateway",
+		GatewayNamespace: gatewayNS,
+		ServiceName:      "argocd-server",
+		ServicePort:      80,
+	}
+	manifest := k8s.HTTPRouteManifest(httpRouteCfg)
+
+	// If TLS is enabled, create a Certificate resource (cert-manager)
+	if cfg.TLS {
+		p.Log.Debug("TLS enabled, creating Certificate resource...\n")
+		certManifest := fmt.Sprintf(`apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: argocd-tls
+  namespace: %s
+spec:
+  secretName: argocd-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - %s`, namespace, cfg.Host)
+		manifest = manifest + "\n---\n" + certManifest
+	}
+
+	p.Log.Debug("Applying HTTPRoute resource for host '%s'...\n", cfg.Host)
 	err = retry.Run(3, 5*time.Second, p.Log.Warn, func() error {
-		ingressCmd := execCommand("kubectl", "--context", kubecontext, "apply", "-f", "-")
-		ingressCmd.Stdin = strings.NewReader(manifest)
-		ingressCmd.Stdout = os.Stdout
-		ingressCmd.Stderr = os.Stderr
-		return ingressCmd.Run()
+		httpRouteCmd := execCommand("kubectl", "--context", kubecontext, "apply", "-f", "-")
+		httpRouteCmd.Stdin = strings.NewReader(manifest)
+		httpRouteCmd.Stdout = os.Stdout
+		httpRouteCmd.Stderr = os.Stderr
+		return httpRouteCmd.Run()
 	})
 	if err != nil {
 		return fmt.Errorf("failed to apply ingress: %w", err)
 	}
 
-	p.Log.Success("Ingress configured: http://%s\n", cfg.Host)
+	p.Log.Success("HTTPRoute configured: http://%s\n", cfg.Host)
 	if cfg.TLS {
 		p.Log.Info("  HTTPS: https://%s (TLS via cert-manager)\n", cfg.Host)
 	}
 
 	return nil
+}
+
+// detectIngressNamespace tries to detect which ingress controller namespace exists
+func (p *Plugin) detectIngressNamespace(kubecontext string) string {
+	// Check traefik namespace
+	cmd := execCommand("kubectl", "--context", kubecontext, "get", "namespace", "traefik")
+	if err := cmd.Run(); err == nil {
+		return "traefik"
+	}
+
+	// Check nginx-gateway namespace
+	cmd = execCommand("kubectl", "--context", kubecontext, "get", "namespace", "nginx-gateway")
+	if err := cmd.Run(); err == nil {
+		return "nginx-gateway"
+	}
+
+	return ""
 }
 
 func (p *Plugin) runKubectl(kubecontext string, args ...string) error {

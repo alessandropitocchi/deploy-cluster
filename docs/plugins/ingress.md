@@ -26,12 +26,16 @@ plugins:
 [Traefik](https://traefik.io/) — modern HTTP reverse proxy and load balancer with native Gateway API support.
 
 Features:
-- Native Gateway API support (experimental)
+- Native Gateway API support
 - Traditional Ingress support
 - Automatic HTTPS with Let's Encrypt
 - Middleware support
 
 Installation method: Helm chart from `https://traefik.github.io/charts`
+
+Creates:
+- Traefik deployment in namespace `traefik`
+- Gateway `shared-gateway` in namespace `traefik` (for HTTPRoutes)
 
 ### `nginx-gateway-fabric`
 
@@ -44,6 +48,10 @@ Features:
 - Advanced traffic management
 
 Installation method: Helm OCI chart from `oci://ghcr.io/nginx/charts/nginx-gateway-fabric`
+
+Creates:
+- NGINX Gateway Fabric deployment in namespace `nginx-gateway`
+- Gateway `shared-gateway` in namespace `nginx-gateway` (for HTTPRoutes)
 
 ## Prerequisites
 
@@ -125,14 +133,14 @@ The service becomes reachable at `http://myapp.localhost`.
 
 ## Integration with Other Plugins
 
-When ingress is enabled, several plugins can automatically create an Ingress for their UI:
+When ingress is enabled, the plugin creates a **shared Gateway** that other plugins use to expose their UI via **HTTPRoute** resources (Gateway API).
 
-| Plugin | Default Hostname | Configuration |
-|--------|-----------------|---------------|
-| Monitoring (Grafana) | `grafana.localhost` | `monitoring.ingress.host` |
-| Dashboard (Headlamp) | `headlamp.localhost` | `dashboard.ingress.host` |
-| ArgoCD | `argocd.localhost` | `argocd.ingress.host` |
-| Custom Apps | configurable | `customApps[].ingress.host` |
+| Plugin | Default Hostname | Configuration | Resource Created |
+|--------|-----------------|---------------|------------------|
+| Monitoring (Grafana) | `grafana.localhost` | `monitoring.ingress.host` | HTTPRoute |
+| Dashboard (Headlamp) | `headlamp.localhost` | `dashboard.ingress.host` | HTTPRoute |
+| ArgoCD | `argocd.localhost` | `argocd.ingress.host` | HTTPRoute |
+| Custom Apps | configurable | `customApps[].ingress.host` | HTTPRoute |
 
 ## Verification
 

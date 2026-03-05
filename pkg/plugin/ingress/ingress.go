@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
+	"github.com/alessandropitocchi/deploy-cluster/pkg/k8s"
 	"github.com/alessandropitocchi/deploy-cluster/pkg/logger"
 	"github.com/alessandropitocchi/deploy-cluster/pkg/retry"
 	"github.com/alessandropitocchi/deploy-cluster/pkg/template"
@@ -216,6 +218,43 @@ func (p *Plugin) installTraefik(cfg *template.IngressTemplate, kubecontext strin
 	p.Log.Success("Traefik ingress controller installed successfully\n")
 	p.Log.Info("Ingress class: traefik\n")
 	p.Log.Info("Gateway class: traefik-gateway\n")
+
+	// Create shared Gateway for HTTPRoutes
+	if err := p.createSharedGateway(kubecontext, "traefik"); err != nil {
+		p.Log.Warn("Failed to create shared Gateway: %v\n", err)
+	}
+
+	return nil
+}
+
+// createSharedGateway creates a shared Gateway resource for HTTPRoutes
+func (p *Plugin) createSharedGateway(kubecontext string, ingressType string) error {
+	p.Log.Info("Creating shared Gateway for HTTPRoutes...\n")
+
+	gatewayClass := k8s.GetGatewayClassName(ingressType)
+	var namespace string
+	if ingressType == "traefik" {
+		namespace = traefikNamespace
+	} else {
+		namespace = nginxGatewayNamespace
+	}
+
+	manifest := k8s.GatewayManifest(k8s.GatewayConfig{
+		Name:             "shared-gateway",
+		Namespace:        namespace,
+		GatewayClassName: gatewayClass,
+		Hosts:            []string{}, // Empty = accept all hosts
+	})
+
+	cmd := execCommand("kubectl", "--context", kubecontext, "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(manifest)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to apply Gateway: %w", err)
+	}
+
+	p.Log.Success("Shared Gateway created in namespace %s\n", namespace)
 	return nil
 }
 
@@ -296,6 +335,12 @@ func (p *Plugin) installNginxGatewayFabric(cfg *template.IngressTemplate, kubeco
 
 	p.Log.Success("NGINX Gateway Fabric installed successfully\n")
 	p.Log.Info("Gateway class: nginx\n")
+
+	// Create shared Gateway for HTTPRoutes
+	if err := p.createSharedGateway(kubecontext, "nginx-gateway-fabric"); err != nil {
+		p.Log.Warn("Failed to create shared Gateway: %v\n", err)
+	}
+
 	return nil
 }
 

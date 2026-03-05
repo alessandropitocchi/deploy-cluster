@@ -37,7 +37,9 @@ The plugin:
 
 ## Access
 
-### With ingress
+### With ingress (HTTPRoute)
+
+If `ingress.enabled: true`, an HTTPRoute is created to expose Headlamp via the shared Gateway:
 
 ```
 http://headlamp.localhost

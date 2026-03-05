@@ -174,14 +174,23 @@ func (p *Plugin) installPrometheus(cfg *template.MonitoringTemplate, kubecontext
 }
 
 func (p *Plugin) configureGrafanaIngress(cfg *template.MonitoringIngressTemplate, kubecontext string) error {
-	p.Log.Info("Configuring ingress for Grafana...\n")
+	p.Log.Info("Configuring HTTPRoute for Grafana...\n")
 
-	manifest := k8s.IngressManifest(k8s.IngressConfig{
-		Name:        "grafana-ingress",
-		Namespace:   namespace,
-		Host:        cfg.Host,
-		ServiceName: "kube-prometheus-stack-grafana",
-		ServicePort: 80,
+	// Try to detect which ingress controller is installed by checking namespaces
+	gatewayNS := p.detectIngressNamespace(kubecontext)
+	if gatewayNS == "" {
+		p.Log.Warn("Could not detect ingress controller, defaulting to traefik namespace\n")
+		gatewayNS = "traefik"
+	}
+
+	manifest := k8s.HTTPRouteManifest(k8s.HTTPRouteConfig{
+		Name:             "grafana",
+		Namespace:        namespace,
+		Host:             cfg.Host,
+		GatewayName:      "shared-gateway",
+		GatewayNamespace: gatewayNS,
+		ServiceName:      "kube-prometheus-stack-grafana",
+		ServicePort:      80,
 	})
 
 	err := retry.Run(3, 5*time.Second, p.Log.Warn, func() error {
@@ -192,11 +201,28 @@ func (p *Plugin) configureGrafanaIngress(cfg *template.MonitoringIngressTemplate
 		return cmd.Run()
 	})
 	if err != nil {
-		return fmt.Errorf("failed to apply grafana ingress: %w", err)
+		return fmt.Errorf("failed to apply grafana HTTPRoute: %w", err)
 	}
 
 	p.Log.Success("Grafana available at: http://%s (admin/prom-operator)\n", cfg.Host)
 	return nil
+}
+
+// detectIngressNamespace tries to detect which ingress controller namespace exists
+func (p *Plugin) detectIngressNamespace(kubecontext string) string {
+	// Check traefik namespace
+	cmd := execCommand("kubectl", "--context", kubecontext, "get", "namespace", "traefik")
+	if err := cmd.Run(); err == nil {
+		return "traefik"
+	}
+
+	// Check nginx-gateway namespace
+	cmd = execCommand("kubectl", "--context", kubecontext, "get", "namespace", "nginx-gateway")
+	if err := cmd.Run(); err == nil {
+		return "nginx-gateway"
+	}
+
+	return ""
 }
 
 func (p *Plugin) uninstallPrometheus(kubecontext string) error {

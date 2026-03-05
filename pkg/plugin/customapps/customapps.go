@@ -274,14 +274,23 @@ func (p *Plugin) configureIngress(app template.CustomAppTemplate, kubecontext st
 		serviceName = app.Name
 	}
 
-	p.Log.Info("Configuring ingress for %s (%s)...\n", app.Name, ing.Host)
+	p.Log.Info("Configuring HTTPRoute for %s (%s)...\n", app.Name, ing.Host)
 
-	manifest := k8s.IngressManifest(k8s.IngressConfig{
-		Name:        app.Name + "-ingress",
-		Namespace:   ns,
-		Host:        ing.Host,
-		ServiceName: serviceName,
-		ServicePort: ing.ServicePort,
+	// Try to detect which ingress controller is installed by checking namespaces
+	gatewayNS := p.detectIngressNamespace(kubecontext)
+	if gatewayNS == "" {
+		p.Log.Warn("Could not detect ingress controller, defaulting to traefik namespace\n")
+		gatewayNS = "traefik"
+	}
+
+	manifest := k8s.HTTPRouteManifest(k8s.HTTPRouteConfig{
+		Name:             app.Name,
+		Namespace:        ns,
+		Host:             ing.Host,
+		GatewayName:      "shared-gateway",
+		GatewayNamespace: gatewayNS,
+		ServiceName:      serviceName,
+		ServicePort:      int32(ing.ServicePort),
 	})
 
 	err := retry.Run(3, 5*time.Second, p.Log.Warn, func() error {
@@ -292,9 +301,26 @@ func (p *Plugin) configureIngress(app template.CustomAppTemplate, kubecontext st
 		return cmd.Run()
 	})
 	if err != nil {
-		return fmt.Errorf("failed to apply ingress: %w", err)
+		return fmt.Errorf("failed to apply HTTPRoute: %w", err)
 	}
 
 	p.Log.Success("%s available at: http://%s\n", app.Name, ing.Host)
 	return nil
+}
+
+// detectIngressNamespace tries to detect which ingress controller namespace exists
+func (p *Plugin) detectIngressNamespace(kubecontext string) string {
+	// Check traefik namespace
+	cmd := execCommand("kubectl", "--context", kubecontext, "get", "namespace", "traefik")
+	if err := cmd.Run(); err == nil {
+		return "traefik"
+	}
+
+	// Check nginx-gateway namespace
+	cmd = execCommand("kubectl", "--context", kubecontext, "get", "namespace", "nginx-gateway")
+	if err := cmd.Run(); err == nil {
+		return "nginx-gateway"
+	}
+
+	return ""
 }

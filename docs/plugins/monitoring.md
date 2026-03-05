@@ -39,15 +39,17 @@ oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack
 
 ## Accessing Grafana
 
-### With ingress
+### With ingress (HTTPRoute)
 
-If `ingress.enabled: true`, Grafana is directly accessible:
+If `ingress.enabled: true`, an HTTPRoute is created to expose Grafana via the shared Gateway:
 
 ```
 http://grafana.localhost
 ```
 
 Credentials: `admin` / `prom-operator`
+
+The HTTPRoute references the shared Gateway created by the ingress plugin (`shared-gateway` in the ingress controller namespace).
 
 ### Without ingress (port-forward)
 
